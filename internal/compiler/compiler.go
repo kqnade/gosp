@@ -55,6 +55,10 @@ func (b *builder) compilePair(p *value.Pair) error {
 			return b.compileUnary("cdr", vm.OpCdr, p.Cdr)
 		case "cons":
 			return b.compileBinary("cons", vm.OpCons, p.Cdr)
+		case "atom":
+			return b.compileUnary("atom", vm.OpAtom, p.Cdr)
+		case "eq":
+			return b.compileBinary("eq", vm.OpEq, p.Cdr)
 		}
 	}
 	return fmt.Errorf("gosp: compile: cannot compile call form")

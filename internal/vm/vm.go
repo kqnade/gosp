@@ -66,6 +66,28 @@ func Run(code *Code, env *value.Env) (value.Value, error) {
 			car := stack[len(stack)-2]
 			stack = stack[:len(stack)-1]
 			stack[len(stack)-1] = value.Cons(car, cdr)
+		case OpAtom:
+			if len(stack) == 0 {
+				return nil, fmt.Errorf("gosp: vm: atom: empty stack")
+			}
+			top := stack[len(stack)-1]
+			if value.IsAtom(top) {
+				stack[len(stack)-1] = value.Symbol{Name: "t"}
+			} else {
+				stack[len(stack)-1] = value.NIL
+			}
+		case OpEq:
+			if len(stack) < 2 {
+				return nil, fmt.Errorf("gosp: vm: eq: stack underflow")
+			}
+			rhs := stack[len(stack)-1]
+			lhs := stack[len(stack)-2]
+			stack = stack[:len(stack)-1]
+			if value.Eq(lhs, rhs) {
+				stack[len(stack)-1] = value.Symbol{Name: "t"}
+			} else {
+				stack[len(stack)-1] = value.NIL
+			}
 		case OpRet:
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("gosp: vm: ret on empty stack")

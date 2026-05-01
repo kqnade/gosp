@@ -130,6 +130,96 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunAtomEq(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	tSym := value.Symbol{Name: "t"}
+
+	cases := []struct {
+		name string
+		form value.Value
+		want value.Value
+	}{
+		{
+			name: "atom of symbol",
+			form: value.List(value.Symbol{Name: "atom"}, value.List(q, a)),
+			want: tSym,
+		},
+		{
+			name: "atom of () is t",
+			form: value.List(value.Symbol{Name: "atom"}, value.List(q, value.NIL)),
+			want: tSym,
+		},
+		{
+			name: "atom of pair is ()",
+			form: value.List(value.Symbol{Name: "atom"}, value.List(q, value.List(a, b))),
+			want: value.NIL,
+		},
+		{
+			name: "eq same symbol",
+			form: value.List(value.Symbol{Name: "eq"}, value.List(q, a), value.List(q, a)),
+			want: tSym,
+		},
+		{
+			name: "eq different symbols",
+			form: value.List(value.Symbol{Name: "eq"}, value.List(q, a), value.List(q, b)),
+			want: value.NIL,
+		},
+		{
+			name: "eq nil and nil",
+			form: value.List(value.Symbol{Name: "eq"}, value.List(q, value.NIL), value.List(q, value.NIL)),
+			want: tSym,
+		},
+		{
+			name: "eq pair and pair is ()",
+			form: value.List(
+				value.Symbol{Name: "eq"},
+				value.List(q, value.List(a)),
+				value.List(q, value.List(a)),
+			),
+			want: value.NIL,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, err := Compile(tc.form)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			got, err := vm.Run(code, value.NewEnv(nil))
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !value.Eq(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompileAtomEqArity(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	a := value.Symbol{Name: "a"}
+	cases := []struct {
+		name string
+		form value.Value
+	}{
+		{"atom no args", value.List(value.Symbol{Name: "atom"})},
+		{"atom too many", value.List(value.Symbol{Name: "atom"}, value.List(q, a), value.List(q, a))},
+		{"eq one arg", value.List(value.Symbol{Name: "eq"}, value.List(q, a))},
+		{"eq three args", value.List(value.Symbol{Name: "eq"}, value.List(q, a), value.List(q, a), value.List(q, a))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.form); err == nil {
+				t.Errorf("expected compile error, got nil")
+			}
+		})
+	}
+}
+
 func TestCompileAndRunCarCdrCons(t *testing.T) {
 	q := value.Symbol{Name: "quote"}
 	a := value.Symbol{Name: "a"}
