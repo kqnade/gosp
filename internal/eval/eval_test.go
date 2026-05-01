@@ -255,6 +255,55 @@ func TestEvalAtom(t *testing.T) {
 	}
 }
 
+func TestEvalLambdaIdentity(t *testing.T) {
+	env := NewGlobalEnv()
+	// ((lambda (x) x) (quote a))
+	lam := value.List(
+		value.Symbol{Name: "lambda"},
+		value.List(value.Symbol{Name: "x"}),
+		value.Symbol{Name: "x"},
+	)
+	form := value.List(lam, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}))
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(lambda) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "a" {
+		t.Fatalf("Eval(lambda) = %v, want symbol a", got)
+	}
+}
+
+func TestEvalLambdaClosure(t *testing.T) {
+	env := NewGlobalEnv()
+	// (((lambda (x) (lambda (y) x)) (quote outer)) (quote inner)) → outer
+	inner := value.List(value.Symbol{Name: "lambda"}, value.List(value.Symbol{Name: "y"}), value.Symbol{Name: "x"})
+	outer := value.List(value.Symbol{Name: "lambda"}, value.List(value.Symbol{Name: "x"}), inner)
+	apply1 := value.List(outer, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "outer"}))
+	apply2 := value.List(apply1, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "inner"}))
+	got, err := Eval(apply2, env)
+	if err != nil {
+		t.Fatalf("Eval(closure) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "outer" {
+		t.Fatalf("Eval(closure) = %v, want outer", got)
+	}
+}
+
+func TestEvalLambdaArityError(t *testing.T) {
+	env := NewGlobalEnv()
+	lam := value.List(
+		value.Symbol{Name: "lambda"},
+		value.List(value.Symbol{Name: "x"}),
+		value.Symbol{Name: "x"},
+	)
+	form := value.List(lam) // no args
+	if _, err := Eval(form, env); err == nil {
+		t.Fatalf("expected arity error, got nil")
+	}
+}
+
 func TestEvalEq(t *testing.T) {
 	env := NewGlobalEnv()
 	// (eq 'a 'a) → t

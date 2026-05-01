@@ -36,6 +36,8 @@ func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
 			return evalQuote(p.Cdr)
 		case "cond":
 			return evalCond(p.Cdr, env)
+		case "lambda":
+			return evalLambda(p.Cdr, env)
 		}
 	}
 	fn, err := Eval(p.Car, env)
@@ -47,6 +49,42 @@ func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
 		return nil, err
 	}
 	return apply(fn, args)
+}
+
+func evalLambda(form value.Value, env *value.Env) (value.Value, error) {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: lambda: missing parameter list")
+	}
+	body, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: lambda: missing body")
+	}
+	if !value.IsNil(body.Cdr) {
+		return nil, fmt.Errorf("gosp: eval: lambda: body must be a single expression")
+	}
+	params, err := parseParams(pair.Car)
+	if err != nil {
+		return nil, err
+	}
+	return &value.Func{Params: params, Body: body.Car, Env: env}, nil
+}
+
+func parseParams(v value.Value) ([]value.Symbol, error) {
+	var out []value.Symbol
+	for !value.IsNil(v) {
+		pair, ok := v.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: lambda: parameter list must be proper")
+		}
+		sym, ok := pair.Car.(value.Symbol)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: lambda: parameter must be a symbol")
+		}
+		out = append(out, sym)
+		v = pair.Cdr
+	}
+	return out, nil
 }
 
 func evalArgs(args value.Value, env *value.Env) ([]value.Value, error) {
@@ -70,6 +108,15 @@ func apply(fn value.Value, args []value.Value) (value.Value, error) {
 	switch f := fn.(type) {
 	case value.Builtin:
 		return f.Fn(args)
+	case *value.Func:
+		if len(args) != len(f.Params) {
+			return nil, fmt.Errorf("gosp: eval: wrong number of arguments")
+		}
+		frame := value.NewEnv(f.Env)
+		for i, p := range f.Params {
+			frame.Define(p.Name, args[i])
+		}
+		return Eval(f.Body, frame)
 	default:
 		return nil, fmt.Errorf("gosp: eval: not a function: %T", fn)
 	}
