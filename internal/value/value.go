@@ -28,13 +28,24 @@ type Builtin struct {
 	Fn   func(args []Value) (Value, error)
 }
 
+// Closure is the runtime representation of a compiled lambda used by the
+// bytecode VM. Body holds the compiled body (currently *vm.Code) — kept as
+// any so the value package does not import vm.
+type Closure struct {
+	Params []Symbol
+	Body   any
+	Env    *Env
+	Self   *Symbol
+}
+
 var NIL Value = Nil{}
 
-func (Symbol) lispValue()  {}
-func (Nil) lispValue()     {}
-func (*Pair) lispValue()   {}
-func (*Func) lispValue()   {}
-func (Builtin) lispValue() {}
+func (Symbol) lispValue()   {}
+func (Nil) lispValue()      {}
+func (*Pair) lispValue()    {}
+func (*Func) lispValue()    {}
+func (Builtin) lispValue()  {}
+func (*Closure) lispValue() {}
 
 func Cons(a, b Value) *Pair {
 	return &Pair{Car: a, Cdr: b}

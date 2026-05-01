@@ -130,6 +130,150 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunLambdaApply(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	x := value.Symbol{Name: "x"}
+	y := value.Symbol{Name: "y"}
+
+	cases := []struct {
+		name string
+		form value.Value
+		env  func() *value.Env
+		want value.Value
+	}{
+		{
+			name: "((lambda (x) x) 'a) — identity",
+			form: value.List(
+				value.List(lambda, value.List(x), x),
+				value.List(q, a),
+			),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: a,
+		},
+		{
+			name: "((lambda () (quote ok))) — nullary",
+			form: value.List(
+				value.List(lambda, value.NIL, value.List(q, value.Symbol{Name: "ok"})),
+			),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.Symbol{Name: "ok"},
+		},
+		{
+			name: "two-arg lambda over cons",
+			form: value.List(
+				value.List(
+					lambda,
+					value.List(x, y),
+					value.List(value.Symbol{Name: "cons"}, x, y),
+				),
+				value.List(q, a),
+				value.List(q, b),
+			),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.Cons(a, b),
+		},
+		{
+			name: "lambda bound in env then called",
+			form: value.List(
+				value.Symbol{Name: "f"},
+				value.List(q, a),
+			),
+			env: func() *value.Env {
+				e := value.NewEnv(nil)
+				code, err := Compile(value.List(lambda, value.List(x), x))
+				if err != nil {
+					t.Fatalf("Compile lambda: %v", err)
+				}
+				v, err := vm.Run(code, e)
+				if err != nil {
+					t.Fatalf("Run lambda: %v", err)
+				}
+				e.Define("f", v)
+				return e
+			},
+			want: a,
+		},
+		{
+			name: "lexical capture: ((lambda (x) ((lambda (y) x) 'b)) 'a)",
+			form: value.List(
+				value.List(
+					lambda,
+					value.List(x),
+					value.List(
+						value.List(lambda, value.List(y), x),
+						value.List(q, b),
+					),
+				),
+				value.List(q, a),
+			),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: a,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, err := Compile(tc.form)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			got, err := vm.Run(code, tc.env())
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !valueEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompileLambdaMalformed(t *testing.T) {
+	lambda := value.Symbol{Name: "lambda"}
+	x := value.Symbol{Name: "x"}
+
+	cases := []struct {
+		name string
+		form value.Value
+	}{
+		{"missing param list", value.List(lambda)},
+		{"missing body", value.List(lambda, value.List(x))},
+		{"non-symbol param", value.List(lambda, value.List(value.List(x)), x)},
+		{"too many bodies", value.List(lambda, value.List(x), x, x)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.form); err == nil {
+				t.Errorf("expected compile error, got nil")
+			}
+		})
+	}
+}
+
+func TestRunWrongArity(t *testing.T) {
+	lambda := value.Symbol{Name: "lambda"}
+	x := value.Symbol{Name: "x"}
+	q := value.Symbol{Name: "quote"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+
+	form := value.List(
+		value.List(lambda, value.List(x), x),
+		value.List(q, a),
+		value.List(q, b),
+	)
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if _, err := vm.Run(code, value.NewEnv(nil)); err == nil {
+		t.Fatal("expected runtime error for wrong arity, got nil")
+	}
+}
+
 func TestCompileAndRunAtomEq(t *testing.T) {
 	q := value.Symbol{Name: "quote"}
 	a := value.Symbol{Name: "a"}

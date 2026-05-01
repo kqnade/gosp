@@ -6,10 +6,20 @@ import (
 	"github.com/kqnade/gosp/internal/value"
 )
 
+type frame struct {
+	code *Code
+	pc   int
+	env  *value.Env
+}
+
 func Run(code *Code, env *value.Env) (value.Value, error) {
 	stack := make([]value.Value, 0, 16)
+	frames := make([]frame, 0, 8)
 	pc := 0
-	for pc < len(code.Instrs) {
+	for {
+		if pc >= len(code.Instrs) {
+			return nil, fmt.Errorf("gosp: vm: missing RET")
+		}
 		ins := code.Instrs[pc]
 		pc++
 		switch ins.Op {
@@ -88,14 +98,61 @@ func Run(code *Code, env *value.Env) (value.Value, error) {
 			} else {
 				stack[len(stack)-1] = value.NIL
 			}
+		case OpMakeClosure:
+			if ins.Arg < 0 || ins.Arg >= len(code.Funcs) {
+				return nil, fmt.Errorf("gosp: vm: make-closure: bad function index %d", ins.Arg)
+			}
+			proto := code.Funcs[ins.Arg]
+			stack = append(stack, &value.Closure{
+				Params: proto.Params,
+				Body:   proto.Code,
+				Env:    env,
+			})
+		case OpCall:
+			n := ins.Arg
+			if len(stack) < n+1 {
+				return nil, fmt.Errorf("gosp: vm: call: stack underflow")
+			}
+			argsBase := len(stack) - n
+			args := append([]value.Value(nil), stack[argsBase:]...)
+			callee := stack[argsBase-1]
+			stack = stack[:argsBase-1]
+			closure, ok := callee.(*value.Closure)
+			if !ok {
+				return nil, fmt.Errorf("gosp: vm: call: not a function: %T", callee)
+			}
+			if len(closure.Params) != n {
+				return nil, fmt.Errorf("gosp: vm: call: wrong number of arguments")
+			}
+			body, ok := closure.Body.(*Code)
+			if !ok {
+				return nil, fmt.Errorf("gosp: vm: call: closure body is not VM code")
+			}
+			newEnv := value.NewEnv(closure.Env)
+			if closure.Self != nil {
+				newEnv.Define(closure.Self.Name, closure)
+			}
+			for i, p := range closure.Params {
+				newEnv.Define(p.Name, args[i])
+			}
+			frames = append(frames, frame{code: code, pc: pc, env: env})
+			code = body
+			pc = 0
+			env = newEnv
 		case OpRet:
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("gosp: vm: ret on empty stack")
 			}
-			return stack[len(stack)-1], nil
+			if len(frames) == 0 {
+				return stack[len(stack)-1], nil
+			}
+			fr := frames[len(frames)-1]
+			frames = frames[:len(frames)-1]
+			code = fr.code
+			pc = fr.pc
+			env = fr.env
 		default:
 			return nil, fmt.Errorf("gosp: vm: unknown opcode %s", ins.Op)
 		}
 	}
-	return nil, fmt.Errorf("gosp: vm: missing RET")
 }

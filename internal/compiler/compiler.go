@@ -59,9 +59,80 @@ func (b *builder) compilePair(p *value.Pair) error {
 			return b.compileUnary("atom", vm.OpAtom, p.Cdr)
 		case "eq":
 			return b.compileBinary("eq", vm.OpEq, p.Cdr)
+		case "lambda":
+			return b.compileLambda(p.Cdr)
 		}
 	}
-	return fmt.Errorf("gosp: compile: cannot compile call form")
+	return b.compileCall(p)
+}
+
+func (b *builder) compileLambda(form value.Value) error {
+	proto, err := buildFuncProto(form)
+	if err != nil {
+		return err
+	}
+	idx := len(b.code.Funcs)
+	b.code.Funcs = append(b.code.Funcs, proto)
+	b.emit(vm.OpMakeClosure, idx)
+	return nil
+}
+
+func buildFuncProto(form value.Value) (*vm.FuncProto, error) {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: compile: lambda: missing parameter list")
+	}
+	body, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: compile: lambda: missing body")
+	}
+	if !value.IsNil(body.Cdr) {
+		return nil, fmt.Errorf("gosp: compile: lambda: body must be a single expression")
+	}
+	params, err := parseParams(pair.Car)
+	if err != nil {
+		return nil, err
+	}
+	bb := &builder{code: &vm.Code{}}
+	if err := bb.compile(body.Car); err != nil {
+		return nil, err
+	}
+	bb.emit(vm.OpRet, 0)
+	return &vm.FuncProto{Params: params, Code: bb.code}, nil
+}
+
+func parseParams(v value.Value) ([]value.Symbol, error) {
+	var out []value.Symbol
+	for !value.IsNil(v) {
+		pair, ok := v.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: compile: lambda: parameter list must be proper")
+		}
+		sym, ok := pair.Car.(value.Symbol)
+		if !ok {
+			return nil, fmt.Errorf("gosp: compile: lambda: parameter must be a symbol")
+		}
+		out = append(out, sym)
+		v = pair.Cdr
+	}
+	return out, nil
+}
+
+func (b *builder) compileCall(p *value.Pair) error {
+	args, err := flatArgs(p.Cdr)
+	if err != nil {
+		return err
+	}
+	if err := b.compile(p.Car); err != nil {
+		return err
+	}
+	for _, a := range args {
+		if err := b.compile(a); err != nil {
+			return err
+		}
+	}
+	b.emit(vm.OpCall, len(args))
+	return nil
 }
 
 func (b *builder) compileUnary(name string, op vm.Opcode, args value.Value) error {
