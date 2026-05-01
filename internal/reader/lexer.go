@@ -7,6 +7,7 @@ type TokenKind int
 const (
 	TokenLParen TokenKind = iota
 	TokenRParen
+	TokenQuote
 	TokenSymbol
 )
 
@@ -32,6 +33,9 @@ func Tokenize(input string) ([]Token, error) {
 		case input[i] == ')':
 			tokens = append(tokens, Token{Kind: TokenRParen, Lexeme: ")"})
 			i++
+		case input[i] == '\'':
+			tokens = append(tokens, Token{Kind: TokenQuote, Lexeme: "'"})
+			i++
 		default:
 			start := i
 			for i < len(input) && !isDelimiter(rune(input[i])) {
@@ -44,5 +48,5 @@ func Tokenize(input string) ([]Token, error) {
 }
 
 func isDelimiter(r rune) bool {
-	return unicode.IsSpace(r) || r == '(' || r == ')'
+	return unicode.IsSpace(r) || r == '(' || r == ')' || r == '\''
 }

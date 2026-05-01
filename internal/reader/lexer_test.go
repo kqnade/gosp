@@ -51,3 +51,36 @@ func TestTokenizeCommentsAndWhitespace(t *testing.T) {
 		t.Fatalf("Tokenize = %#v, want %#v", got, want)
 	}
 }
+
+func TestTokenizeQuoteSymbol(t *testing.T) {
+	got, err := Tokenize("'a")
+	if err != nil {
+		t.Fatalf("Tokenize returned error: %v", err)
+	}
+
+	want := []Token{
+		{Kind: TokenQuote, Lexeme: "'"},
+		{Kind: TokenSymbol, Lexeme: "a"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Tokenize = %#v, want %#v", got, want)
+	}
+}
+
+func TestTokenizeQuoteList(t *testing.T) {
+	got, err := Tokenize("'(a b)")
+	if err != nil {
+		t.Fatalf("Tokenize returned error: %v", err)
+	}
+
+	want := []Token{
+		{Kind: TokenQuote, Lexeme: "'"},
+		{Kind: TokenLParen, Lexeme: "("},
+		{Kind: TokenSymbol, Lexeme: "a"},
+		{Kind: TokenSymbol, Lexeme: "b"},
+		{Kind: TokenRParen, Lexeme: ")"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Tokenize = %#v, want %#v", got, want)
+	}
+}
