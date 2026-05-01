@@ -33,6 +33,12 @@ func (p *parser) parseExpr() (value.Value, error) {
 	switch tok.Kind {
 	case TokenSymbol:
 		return value.Symbol{Name: tok.Lexeme}, nil
+	case TokenQuote:
+		quoted, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return value.List(value.Symbol{Name: "quote"}, quoted), nil
 	case TokenLParen:
 		var items []value.Value
 		for p.pos < len(p.tokens) && p.tokens[p.pos].Kind != TokenRParen {

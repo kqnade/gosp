@@ -69,6 +69,41 @@ func TestParseNestedList(t *testing.T) {
 	}
 }
 
+func TestParseQuoteSymbol(t *testing.T) {
+	tokens, err := Tokenize("'a")
+	if err != nil {
+		t.Fatalf("Tokenize returned error: %v", err)
+	}
+	got, err := Parse(tokens)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	want := value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"})
+	if !valuesEqual(got, want) {
+		t.Fatalf("Parse = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseQuoteList(t *testing.T) {
+	tokens, err := Tokenize("'(a b)")
+	if err != nil {
+		t.Fatalf("Tokenize returned error: %v", err)
+	}
+	got, err := Parse(tokens)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	want := value.List(
+		value.Symbol{Name: "quote"},
+		value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}),
+	)
+	if !valuesEqual(got, want) {
+		t.Fatalf("Parse = %#v, want %#v", got, want)
+	}
+}
+
 func valuesEqual(a, b value.Value) bool {
 	if value.Eq(a, b) {
 		return true
