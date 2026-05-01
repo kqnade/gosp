@@ -16,6 +16,61 @@ func Compile(v value.Value) (*vm.Code, error) {
 	return c.code, nil
 }
 
+// CompileProgram compiles a sequence of top-level forms. A leading
+// (label NAME EXPR) at top level mutates the global environment via
+// OpDefineGlobal; in-expression label still produces a self-bound
+// closure. The program returns the value of the last form.
+func CompileProgram(forms []value.Value) (*vm.Code, error) {
+	c := &builder{code: &vm.Code{}}
+	if len(forms) == 0 {
+		c.emit(vm.OpLoadConst, c.addConst(value.NIL))
+		c.emit(vm.OpRet, 0)
+		return c.code, nil
+	}
+	for i, form := range forms {
+		if err := c.compileTopLevel(form); err != nil {
+			return nil, err
+		}
+		if i != len(forms)-1 {
+			c.emit(vm.OpPop, 0)
+		}
+	}
+	c.emit(vm.OpRet, 0)
+	return c.code, nil
+}
+
+func (b *builder) compileTopLevel(form value.Value) error {
+	if pair, ok := form.(*value.Pair); ok {
+		if head, ok := pair.Car.(value.Symbol); ok && head.Name == "label" {
+			return b.compileTopLevelLabel(pair.Cdr)
+		}
+	}
+	return b.compile(form, false)
+}
+
+func (b *builder) compileTopLevelLabel(form value.Value) error {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: missing name")
+	}
+	name, ok := pair.Car.(value.Symbol)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: name must be a symbol")
+	}
+	rest, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: missing expression")
+	}
+	if !value.IsNil(rest.Cdr) {
+		return fmt.Errorf("gosp: compile: label: too many arguments")
+	}
+	if err := b.compile(rest.Car, false); err != nil {
+		return err
+	}
+	b.emit(vm.OpDefineGlobal, b.addSym(name.Name))
+	return nil
+}
+
 type builder struct {
 	code *vm.Code
 }

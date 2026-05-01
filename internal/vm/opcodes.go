@@ -20,6 +20,7 @@ const (
 	OpAtom
 	OpEq
 	OpPop
+	OpDefineGlobal
 )
 
 func (o Opcode) String() string {
@@ -54,6 +55,8 @@ func (o Opcode) String() string {
 		return "EQ"
 	case OpPop:
 		return "POP"
+	case OpDefineGlobal:
+		return "DEFINE_GLOBAL"
 	default:
 		return fmt.Sprintf("OP(%d)", uint8(o))
 	}

@@ -244,6 +244,114 @@ func TestCompileAndRunLabel(t *testing.T) {
 	})
 }
 
+func TestCompileProgramTopLevelLabel(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	label := value.Symbol{Name: "label"}
+	cadr := value.Symbol{Name: "cadr"}
+	x := value.Symbol{Name: "x"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	c := value.Symbol{Name: "c"}
+
+	t.Run("(label cadr ...) then (cadr '(a b c)) returns b", func(t *testing.T) {
+		labelForm := value.List(
+			label, cadr,
+			value.List(
+				lambda, value.List(x),
+				value.List(value.Symbol{Name: "car"}, value.List(value.Symbol{Name: "cdr"}, x)),
+			),
+		)
+		callForm := value.List(cadr, value.List(q, value.List(a, b, c)))
+		code, err := CompileProgram([]value.Value{labelForm, callForm})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, b) {
+			t.Errorf("got %v, want b", got)
+		}
+	})
+
+	t.Run("single top-level label returns the bound value", func(t *testing.T) {
+		form := value.List(
+			label,
+			value.Symbol{Name: "ident"},
+			value.List(lambda, value.List(x), x),
+		)
+		code, err := CompileProgram([]value.Value{form})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		env := value.NewEnv(nil)
+		got, err := vm.Run(code, env)
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if _, ok := got.(*value.Closure); !ok {
+			t.Errorf("got %T, want *Closure", got)
+		}
+		if _, ok := env.Lookup("ident"); !ok {
+			t.Errorf("ident not bound in global env")
+		}
+	})
+
+	t.Run("empty program returns ()", func(t *testing.T) {
+		code, err := CompileProgram(nil)
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.IsNil(got) {
+			t.Errorf("got %v, want ()", got)
+		}
+	})
+
+	t.Run("multiple plain forms — last value wins", func(t *testing.T) {
+		forms := []value.Value{
+			value.List(q, a),
+			value.List(q, b),
+			value.List(q, c),
+		}
+		code, err := CompileProgram(forms)
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, c) {
+			t.Errorf("got %v, want c", got)
+		}
+	})
+
+	t.Run("inner-expression label still works inside a top-level form", func(t *testing.T) {
+		// Apply an in-expr label closure.
+		form := value.List(
+			value.List(label, value.Symbol{Name: "F"}, value.List(lambda, value.List(x), x)),
+			value.List(q, a),
+		)
+		code, err := CompileProgram([]value.Value{form})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, a) {
+			t.Errorf("got %v, want a", got)
+		}
+	})
+}
+
 func TestVMTailCallBounded(t *testing.T) {
 	const n = 1000
 

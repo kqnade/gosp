@@ -162,6 +162,11 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 			code = body
 			pc = 0
 			env = newEnv
+		case OpDefineGlobal:
+			if len(stack) == 0 {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: define-global: empty stack")
+			}
+			env.SetGlobal(code.Syms[ins.Arg], stack[len(stack)-1])
 		case OpRet:
 			if len(stack) == 0 {
 				return nil, maxFrames, fmt.Errorf("gosp: vm: ret on empty stack")

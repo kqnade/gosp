@@ -22,6 +22,7 @@ func TestOpcodeString(t *testing.T) {
 		{OpAtom, "ATOM"},
 		{OpEq, "EQ"},
 		{OpPop, "POP"},
+		{OpDefineGlobal, "DEFINE_GLOBAL"},
 	}
 
 	for _, tt := range tests {
