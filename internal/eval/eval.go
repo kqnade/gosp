@@ -38,7 +38,41 @@ func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
 			return evalCond(p.Cdr, env)
 		}
 	}
-	return nil, fmt.Errorf("gosp: eval: cannot apply %v", p.Car)
+	fn, err := Eval(p.Car, env)
+	if err != nil {
+		return nil, err
+	}
+	args, err := evalArgs(p.Cdr, env)
+	if err != nil {
+		return nil, err
+	}
+	return apply(fn, args)
+}
+
+func evalArgs(args value.Value, env *value.Env) ([]value.Value, error) {
+	var out []value.Value
+	for !value.IsNil(args) {
+		pair, ok := args.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: improper argument list")
+		}
+		v, err := Eval(pair.Car, env)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+		args = pair.Cdr
+	}
+	return out, nil
+}
+
+func apply(fn value.Value, args []value.Value) (value.Value, error) {
+	switch f := fn.(type) {
+	case value.Builtin:
+		return f.Fn(args)
+	default:
+		return nil, fmt.Errorf("gosp: eval: not a function: %T", fn)
+	}
 }
 
 func evalQuote(args value.Value) (value.Value, error) {

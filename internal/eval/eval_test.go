@@ -156,3 +156,69 @@ func TestEvalCondEmpty(t *testing.T) {
 		t.Fatalf("Eval((cond)) = %v, want NIL", got)
 	}
 }
+
+func TestEvalCar(t *testing.T) {
+	env := NewGlobalEnv()
+	// (car (quote (a b c)))
+	form := value.List(
+		value.Symbol{Name: "car"},
+		value.List(value.Symbol{Name: "quote"}, value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}, value.Symbol{Name: "c"})),
+	)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(car) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "a" {
+		t.Fatalf("Eval(car) = %v, want symbol a", got)
+	}
+}
+
+func TestEvalCdr(t *testing.T) {
+	env := NewGlobalEnv()
+	form := value.List(
+		value.Symbol{Name: "cdr"},
+		value.List(value.Symbol{Name: "quote"}, value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}, value.Symbol{Name: "c"})),
+	)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(cdr) error: %v", err)
+	}
+	pair, ok := got.(*value.Pair)
+	if !ok {
+		t.Fatalf("Eval(cdr) = %v, want pair", got)
+	}
+	car, _ := pair.Car.(value.Symbol)
+	if car.Name != "b" {
+		t.Fatalf("Eval(cdr) car = %v, want b", pair.Car)
+	}
+}
+
+func TestEvalCons(t *testing.T) {
+	env := NewGlobalEnv()
+	form := value.List(
+		value.Symbol{Name: "cons"},
+		value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}),
+		value.List(value.Symbol{Name: "quote"}, value.List(value.Symbol{Name: "b"})),
+	)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(cons) error: %v", err)
+	}
+	pair, ok := got.(*value.Pair)
+	if !ok {
+		t.Fatalf("Eval(cons) = %v, want pair", got)
+	}
+	car, _ := pair.Car.(value.Symbol)
+	if car.Name != "a" {
+		t.Fatalf("Eval(cons) car = %v, want a", pair.Car)
+	}
+}
+
+func TestEvalCarOfNil(t *testing.T) {
+	env := NewGlobalEnv()
+	form := value.List(value.Symbol{Name: "car"}, value.List(value.Symbol{Name: "quote"}, value.NIL))
+	if _, err := Eval(form, env); err == nil {
+		t.Fatalf("Eval((car '())) expected error, got nil")
+	}
+}
