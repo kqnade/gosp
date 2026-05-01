@@ -222,3 +222,67 @@ func TestEvalCarOfNil(t *testing.T) {
 		t.Fatalf("Eval((car '())) expected error, got nil")
 	}
 }
+
+func TestEvalAtom(t *testing.T) {
+	env := NewGlobalEnv()
+	tests := []struct {
+		name string
+		arg  value.Value
+		want string // "t" or "nil"
+	}{
+		{name: "symbol", arg: value.Symbol{Name: "x"}, want: "t"},
+		{name: "nil", arg: value.NIL, want: "t"},
+		{name: "pair", arg: value.List(value.Symbol{Name: "a"}), want: "nil"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			form := value.List(value.Symbol{Name: "atom"}, value.List(value.Symbol{Name: "quote"}, tt.arg))
+			got, err := Eval(form, env)
+			if err != nil {
+				t.Fatalf("Eval(atom) error: %v", err)
+			}
+			if tt.want == "t" {
+				sym, ok := got.(value.Symbol)
+				if !ok || sym.Name != "t" {
+					t.Fatalf("Eval(atom) = %v, want t", got)
+				}
+			} else {
+				if !value.IsNil(got) {
+					t.Fatalf("Eval(atom) = %v, want NIL", got)
+				}
+			}
+		})
+	}
+}
+
+func TestEvalEq(t *testing.T) {
+	env := NewGlobalEnv()
+	// (eq 'a 'a) → t
+	formEq := value.List(
+		value.Symbol{Name: "eq"},
+		value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}),
+		value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}),
+	)
+	got, err := Eval(formEq, env)
+	if err != nil {
+		t.Fatalf("Eval(eq aa) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "t" {
+		t.Fatalf("Eval(eq aa) = %v, want t", got)
+	}
+
+	// (eq 'a 'b) → ()
+	formNeq := value.List(
+		value.Symbol{Name: "eq"},
+		value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}),
+		value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "b"}),
+	)
+	got, err = Eval(formNeq, env)
+	if err != nil {
+		t.Fatalf("Eval(eq ab) error: %v", err)
+	}
+	if !value.IsNil(got) {
+		t.Fatalf("Eval(eq ab) = %v, want NIL", got)
+	}
+}
