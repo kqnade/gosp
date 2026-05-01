@@ -31,3 +31,38 @@ func TestRunFileMissing(t *testing.T) {
 		t.Fatalf("expected error for missing file, got nil")
 	}
 }
+
+func TestRunInteractiveSingleLine(t *testing.T) {
+	in := bytes.NewBufferString("(quote a)\n")
+	var out bytes.Buffer
+	if err := RunInteractive(in, &out); err != nil {
+		t.Fatalf("RunInteractive error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to contain %q", out.String(), "a\n")
+	}
+}
+
+func TestRunInteractiveMultiLine(t *testing.T) {
+	// Form spans two lines; parens only balance after second line.
+	in := bytes.NewBufferString("(quote\n  a)\n")
+	var out bytes.Buffer
+	if err := RunInteractive(in, &out); err != nil {
+		t.Fatalf("RunInteractive error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to contain %q", out.String(), "a\n")
+	}
+}
+
+func TestRunInteractiveSyntaxError(t *testing.T) {
+	// Stray ) is a syntax error — should print error and continue, then EOF cleanly.
+	in := bytes.NewBufferString(")\n(quote a)\n")
+	var out bytes.Buffer
+	if err := RunInteractive(in, &out); err != nil {
+		t.Fatalf("RunInteractive error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to recover and produce %q", out.String(), "a\n")
+	}
+}
