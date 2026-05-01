@@ -36,3 +36,20 @@ func TestPrintProperList(t *testing.T) {
 		t.Fatalf("Print = %q, want %q", got, "(a b c)")
 	}
 }
+
+func TestPrintDottedPair(t *testing.T) {
+	got := Print(value.Cons(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}))
+	if got != "(a . b)" {
+		t.Fatalf("Print = %q, want %q", got, "(a . b)")
+	}
+}
+
+func TestPrintImproperList(t *testing.T) {
+	got := Print(value.Cons(
+		value.Symbol{Name: "a"},
+		value.Cons(value.Symbol{Name: "b"}, value.Symbol{Name: "c"}),
+	))
+	if got != "(a b . c)" {
+		t.Fatalf("Print = %q, want %q", got, "(a b . c)")
+	}
+}

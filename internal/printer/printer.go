@@ -26,6 +26,10 @@ func printList(p *value.Pair) string {
 		if value.IsNil(p.Cdr) {
 			return "(" + strings.Join(parts, " ") + ")"
 		}
-		p = p.Cdr.(*value.Pair)
+		next, ok := p.Cdr.(*value.Pair)
+		if !ok {
+			return "(" + strings.Join(parts, " ") + " . " + Print(p.Cdr) + ")"
+		}
+		p = next
 	}
 }
