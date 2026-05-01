@@ -34,11 +34,19 @@ func (p *parser) parseExpr() (value.Value, error) {
 	case TokenSymbol:
 		return value.Symbol{Name: tok.Lexeme}, nil
 	case TokenLParen:
-		if p.pos < len(p.tokens) && p.tokens[p.pos].Kind == TokenRParen {
-			p.pos++
-			return value.NIL, nil
+		var items []value.Value
+		for p.pos < len(p.tokens) && p.tokens[p.pos].Kind != TokenRParen {
+			item, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, item)
 		}
-		return nil, fmt.Errorf("gosp: reader: expected )")
+		if p.pos >= len(p.tokens) {
+			return nil, fmt.Errorf("gosp: reader: expected )")
+		}
+		p.pos++
+		return value.List(items...), nil
 	default:
 		return nil, fmt.Errorf("gosp: reader: unexpected token %q", tok.Lexeme)
 	}
