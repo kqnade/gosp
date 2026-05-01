@@ -18,6 +18,24 @@ func Parse(tokens []Token) (value.Value, error) {
 	return v, nil
 }
 
+func ReadAll(input string) ([]value.Value, error) {
+	tokens, err := Tokenize(input)
+	if err != nil {
+		return nil, err
+	}
+
+	p := parser{tokens: tokens}
+	var forms []value.Value
+	for p.pos < len(tokens) {
+		form, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		forms = append(forms, form)
+	}
+	return forms, nil
+}
+
 type parser struct {
 	tokens []Token
 	pos    int
