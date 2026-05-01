@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kqnade/gosp/internal/value"
@@ -101,6 +102,34 @@ func TestParseQuoteList(t *testing.T) {
 	)
 	if !valuesEqual(got, want) {
 		t.Fatalf("Parse = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "open paren", src: "(", want: "unexpected EOF"},
+		{name: "close paren", src: ")", want: "unexpected )"},
+		{name: "unterminated list", src: "(a", want: "unexpected EOF"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens, err := Tokenize(tt.src)
+			if err != nil {
+				t.Fatalf("Tokenize returned error: %v", err)
+			}
+			_, err = Parse(tokens)
+			if err == nil {
+				t.Fatal("Parse returned nil error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Parse error = %q, want substring %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
 

@@ -49,10 +49,12 @@ func (p *parser) parseExpr() (value.Value, error) {
 			items = append(items, item)
 		}
 		if p.pos >= len(p.tokens) {
-			return nil, fmt.Errorf("gosp: reader: expected )")
+			return nil, fmt.Errorf("gosp: reader: unexpected EOF")
 		}
 		p.pos++
 		return value.List(items...), nil
+	case TokenRParen:
+		return nil, fmt.Errorf("gosp: reader: unexpected )")
 	default:
 		return nil, fmt.Errorf("gosp: reader: unexpected token %q", tok.Lexeme)
 	}
