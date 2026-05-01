@@ -291,6 +291,40 @@ func TestEvalLambdaClosure(t *testing.T) {
 	}
 }
 
+func TestEvalProgramTopLevelLabel(t *testing.T) {
+	env := NewGlobalEnv()
+	// (label cadr (lambda (x) (car (cdr x))))
+	cadrLam := value.List(
+		value.Symbol{Name: "lambda"},
+		value.List(value.Symbol{Name: "x"}),
+		value.List(value.Symbol{Name: "car"}, value.List(value.Symbol{Name: "cdr"}, value.Symbol{Name: "x"})),
+	)
+	def := value.List(value.Symbol{Name: "label"}, value.Symbol{Name: "cadr"}, cadrLam)
+	use := value.List(
+		value.Symbol{Name: "cadr"},
+		value.List(value.Symbol{Name: "quote"}, value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}, value.Symbol{Name: "c"})),
+	)
+	got, err := EvalProgram([]value.Value{def, use}, env)
+	if err != nil {
+		t.Fatalf("EvalProgram error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "b" {
+		t.Fatalf("EvalProgram = %v, want symbol b", got)
+	}
+}
+
+func TestEvalProgramEmpty(t *testing.T) {
+	env := NewGlobalEnv()
+	got, err := EvalProgram(nil, env)
+	if err != nil {
+		t.Fatalf("EvalProgram(nil) error: %v", err)
+	}
+	if !value.IsNil(got) {
+		t.Fatalf("EvalProgram(nil) = %v, want NIL", got)
+	}
+}
+
 func TestEvalLabelFf(t *testing.T) {
 	env := NewGlobalEnv()
 	// (label ff (lambda (x) (cond ((atom x) x) (t (ff (car x))))))

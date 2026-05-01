@@ -6,6 +6,51 @@ import (
 	"github.com/kqnade/gosp/internal/value"
 )
 
+func EvalProgram(forms []value.Value, env *value.Env) (value.Value, error) {
+	var last value.Value = value.NIL
+	for _, form := range forms {
+		v, err := evalTopLevel(form, env)
+		if err != nil {
+			return nil, err
+		}
+		last = v
+	}
+	return last, nil
+}
+
+func evalTopLevel(form value.Value, env *value.Env) (value.Value, error) {
+	if pair, ok := form.(*value.Pair); ok {
+		if head, ok := pair.Car.(value.Symbol); ok && head.Name == "label" {
+			return evalTopLevelLabel(pair.Cdr, env)
+		}
+	}
+	return Eval(form, env)
+}
+
+func evalTopLevelLabel(form value.Value, env *value.Env) (value.Value, error) {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: missing name")
+	}
+	name, ok := pair.Car.(value.Symbol)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: name must be a symbol")
+	}
+	rest, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: missing expression")
+	}
+	if !value.IsNil(rest.Cdr) {
+		return nil, fmt.Errorf("gosp: eval: label: too many arguments")
+	}
+	v, err := Eval(rest.Car, env)
+	if err != nil {
+		return nil, err
+	}
+	env.SetGlobal(name.Name, v)
+	return v, nil
+}
+
 func Eval(v value.Value, env *value.Env) (value.Value, error) {
 	switch x := v.(type) {
 	case value.Nil:
