@@ -22,6 +22,10 @@ func Tokenize(input string) ([]Token, error) {
 		switch {
 		case unicode.IsSpace(r):
 			i++
+		case input[i] == ';':
+			for i < len(input) && input[i] != '\n' {
+				i++
+			}
 		case input[i] == '(':
 			tokens = append(tokens, Token{Kind: TokenLParen, Lexeme: "("})
 			i++
