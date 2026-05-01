@@ -130,6 +130,66 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunAtom(t *testing.T) {
+	cases := []struct {
+		name string
+		form value.Value
+		env  func() *value.Env
+		want value.Value
+	}{
+		{
+			name: "t evaluates to symbol t",
+			form: value.Symbol{Name: "t"},
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.Symbol{Name: "t"},
+		},
+		{
+			name: "nil symbol evaluates to ()",
+			form: value.Symbol{Name: "nil"},
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.NIL,
+		},
+		{
+			name: "() literal evaluates to ()",
+			form: value.NIL,
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.NIL,
+		},
+		{
+			name: "bound symbol resolves via env",
+			form: value.Symbol{Name: "x"},
+			env: func() *value.Env {
+				e := value.NewEnv(nil)
+				e.Define("x", value.Symbol{Name: "a"})
+				return e
+			},
+			want: value.Symbol{Name: "a"},
+		},
+		{
+			name: "quoted symbol",
+			form: value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.Symbol{Name: "a"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, err := Compile(tc.form)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			got, err := vm.Run(code, tc.env())
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !value.Eq(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func equalInstrs(a, b []vm.Instr) bool {
 	if len(a) != len(b) {
 		return false
