@@ -38,6 +38,8 @@ func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
 			return evalCond(p.Cdr, env)
 		case "lambda":
 			return evalLambda(p.Cdr, env)
+		case "label":
+			return evalLabel(p.Cdr, env)
 		}
 	}
 	fn, err := Eval(p.Car, env)
@@ -68,6 +70,36 @@ func evalLambda(form value.Value, env *value.Env) (value.Value, error) {
 		return nil, err
 	}
 	return &value.Func{Params: params, Body: body.Car, Env: env}, nil
+}
+
+func evalLabel(form value.Value, env *value.Env) (value.Value, error) {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: missing name")
+	}
+	name, ok := pair.Car.(value.Symbol)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: name must be a symbol")
+	}
+	rest, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: missing expression")
+	}
+	if !value.IsNil(rest.Cdr) {
+		return nil, fmt.Errorf("gosp: eval: label: too many arguments")
+	}
+	v, err := Eval(rest.Car, env)
+	if err != nil {
+		return nil, err
+	}
+	fn, ok := v.(*value.Func)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: label: expression must evaluate to a function")
+	}
+	bound := *fn
+	self := name
+	bound.Self = &self
+	return &bound, nil
 }
 
 func parseParams(v value.Value) ([]value.Symbol, error) {
@@ -113,6 +145,9 @@ func apply(fn value.Value, args []value.Value) (value.Value, error) {
 			return nil, fmt.Errorf("gosp: eval: wrong number of arguments")
 		}
 		frame := value.NewEnv(f.Env)
+		if f.Self != nil {
+			frame.Define(f.Self.Name, f)
+		}
 		for i, p := range f.Params {
 			frame.Define(p.Name, args[i])
 		}

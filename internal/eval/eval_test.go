@@ -291,6 +291,41 @@ func TestEvalLambdaClosure(t *testing.T) {
 	}
 }
 
+func TestEvalLabelFf(t *testing.T) {
+	env := NewGlobalEnv()
+	// (label ff (lambda (x) (cond ((atom x) x) (t (ff (car x))))))
+	body := value.List(
+		value.Symbol{Name: "cond"},
+		value.List(
+			value.List(value.Symbol{Name: "atom"}, value.Symbol{Name: "x"}),
+			value.Symbol{Name: "x"},
+		),
+		value.List(
+			value.Symbol{Name: "t"},
+			value.List(value.Symbol{Name: "ff"}, value.List(value.Symbol{Name: "car"}, value.Symbol{Name: "x"})),
+		),
+	)
+	lam := value.List(value.Symbol{Name: "lambda"}, value.List(value.Symbol{Name: "x"}), body)
+	labelForm := value.List(value.Symbol{Name: "label"}, value.Symbol{Name: "ff"}, lam)
+
+	// ((label ff ...) '((a b) c)) → a
+	arg := value.List(value.Symbol{Name: "quote"},
+		value.List(
+			value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"}),
+			value.Symbol{Name: "c"},
+		),
+	)
+	form := value.List(labelForm, arg)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(label ff) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "a" {
+		t.Fatalf("Eval(label ff) = %v, want symbol a", got)
+	}
+}
+
 func TestEvalLambdaArityError(t *testing.T) {
 	env := NewGlobalEnv()
 	lam := value.List(
