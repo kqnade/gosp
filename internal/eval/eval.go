@@ -34,6 +34,8 @@ func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
 		switch head.Name {
 		case "quote":
 			return evalQuote(p.Cdr)
+		case "cond":
+			return evalCond(p.Cdr, env)
 		}
 	}
 	return nil, fmt.Errorf("gosp: eval: cannot apply %v", p.Car)
@@ -48,4 +50,33 @@ func evalQuote(args value.Value) (value.Value, error) {
 		return nil, fmt.Errorf("gosp: eval: quote: wrong number of arguments")
 	}
 	return pair.Car, nil
+}
+
+func evalCond(clauses value.Value, env *value.Env) (value.Value, error) {
+	for !value.IsNil(clauses) {
+		pair, ok := clauses.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: cond: malformed clause list")
+		}
+		clause, ok := pair.Car.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: cond: clause must be a list")
+		}
+		body, ok := clause.Cdr.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: eval: cond: clause must have body")
+		}
+		if !value.IsNil(body.Cdr) {
+			return nil, fmt.Errorf("gosp: eval: cond: clause must have exactly one body expression")
+		}
+		test, err := Eval(clause.Car, env)
+		if err != nil {
+			return nil, err
+		}
+		if !value.IsNil(test) {
+			return Eval(body.Car, env)
+		}
+		clauses = pair.Cdr
+	}
+	return value.NIL, nil
 }

@@ -98,3 +98,61 @@ func TestEvalQuoteArityError(t *testing.T) {
 		t.Fatalf("Eval((quote)) expected error, got nil")
 	}
 }
+
+func TestEvalCondFirstTruthy(t *testing.T) {
+	env := value.NewEnv(nil)
+	// (cond (t (quote a)) (t (quote b)))
+	clause1 := value.List(value.Symbol{Name: "t"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}))
+	clause2 := value.List(value.Symbol{Name: "t"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "b"}))
+	form := value.List(value.Symbol{Name: "cond"}, clause1, clause2)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(cond) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "a" {
+		t.Fatalf("Eval(cond) = %v, want symbol a", got)
+	}
+}
+
+func TestEvalCondSkipsFalseClauses(t *testing.T) {
+	env := value.NewEnv(nil)
+	// (cond (nil (quote skip)) (t (quote ok)))
+	clause1 := value.List(value.Symbol{Name: "nil"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "skip"}))
+	clause2 := value.List(value.Symbol{Name: "t"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "ok"}))
+	form := value.List(value.Symbol{Name: "cond"}, clause1, clause2)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(cond) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "ok" {
+		t.Fatalf("Eval(cond) = %v, want symbol ok", got)
+	}
+}
+
+func TestEvalCondNoMatch(t *testing.T) {
+	env := value.NewEnv(nil)
+	// (cond (nil (quote a)))
+	clause := value.List(value.Symbol{Name: "nil"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}))
+	form := value.List(value.Symbol{Name: "cond"}, clause)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval(cond) error: %v", err)
+	}
+	if !value.IsNil(got) {
+		t.Fatalf("Eval(cond) = %v, want NIL", got)
+	}
+}
+
+func TestEvalCondEmpty(t *testing.T) {
+	env := value.NewEnv(nil)
+	form := value.List(value.Symbol{Name: "cond"})
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval((cond)) error: %v", err)
+	}
+	if !value.IsNil(got) {
+		t.Fatalf("Eval((cond)) = %v, want NIL", got)
+	}
+}
