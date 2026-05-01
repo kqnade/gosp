@@ -108,7 +108,7 @@ func Run(code *Code, env *value.Env) (value.Value, error) {
 				Body:   proto.Code,
 				Env:    env,
 			})
-		case OpCall:
+		case OpCall, OpTailCall:
 			n := ins.Arg
 			if len(stack) < n+1 {
 				return nil, fmt.Errorf("gosp: vm: call: stack underflow")

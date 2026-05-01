@@ -130,6 +130,135 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestTailPositionEmission(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	cond := value.Symbol{Name: "cond"}
+	tSym := value.Symbol{Name: "t"}
+	x := value.Symbol{Name: "x"}
+	f := value.Symbol{Name: "f"}
+	a := value.Symbol{Name: "a"}
+
+	t.Run("tail call in lambda body emits TAIL_CALL", func(t *testing.T) {
+		// (lambda (x) (f x))
+		form := value.List(lambda, value.List(x), value.List(f, x))
+		code := compileForTest(t, form)
+		// Top level: MAKE_CLOSURE + RET; no CALL/TAIL_CALL.
+		if countOp(code.Instrs, vm.OpTailCall) != 0 {
+			t.Errorf("top level should not emit TAIL_CALL")
+		}
+		if countOp(code.Instrs, vm.OpCall) != 0 {
+			t.Errorf("top level should not emit CALL")
+		}
+		if len(code.Funcs) != 1 {
+			t.Fatalf("want 1 FuncProto, got %d", len(code.Funcs))
+		}
+		body := code.Funcs[0].Code.Instrs
+		if countOp(body, vm.OpTailCall) != 1 {
+			t.Errorf("lambda body should emit exactly one TAIL_CALL, got %d", countOp(body, vm.OpTailCall))
+		}
+		if countOp(body, vm.OpCall) != 0 {
+			t.Errorf("lambda body should not emit CALL, got %d", countOp(body, vm.OpCall))
+		}
+	})
+
+	t.Run("non-tail call in lambda body emits CALL", func(t *testing.T) {
+		// (lambda (x) (cons (f x) 'a)) — (f x) is the first arg of cons, not tail.
+		form := value.List(
+			lambda,
+			value.List(x),
+			value.List(value.Symbol{Name: "cons"}, value.List(f, x), value.List(q, a)),
+		)
+		code := compileForTest(t, form)
+		body := code.Funcs[0].Code.Instrs
+		if countOp(body, vm.OpCall) != 1 {
+			t.Errorf("non-tail (f x) should emit CALL, got %d", countOp(body, vm.OpCall))
+		}
+		if countOp(body, vm.OpTailCall) != 0 {
+			t.Errorf("non-tail (f x) should not emit TAIL_CALL, got %d", countOp(body, vm.OpTailCall))
+		}
+	})
+
+	t.Run("cond clause body inherits tail position", func(t *testing.T) {
+		// (lambda (x) (cond ((eq x 'a) (f x)) (t 'a)))
+		form := value.List(
+			lambda,
+			value.List(x),
+			value.List(
+				cond,
+				value.List(
+					value.List(value.Symbol{Name: "eq"}, x, value.List(q, a)),
+					value.List(f, x),
+				),
+				value.List(tSym, value.List(q, a)),
+			),
+		)
+		code := compileForTest(t, form)
+		body := code.Funcs[0].Code.Instrs
+		if countOp(body, vm.OpTailCall) != 1 {
+			t.Errorf("clause body call should emit TAIL_CALL, got %d", countOp(body, vm.OpTailCall))
+		}
+		if countOp(body, vm.OpCall) != 0 {
+			t.Errorf("no CALL expected, got %d", countOp(body, vm.OpCall))
+		}
+	})
+
+	t.Run("cond predicate is not tail", func(t *testing.T) {
+		// (lambda (x) (cond ((f x) 'a) (t 'a))) — (f x) is the predicate, not tail.
+		form := value.List(
+			lambda,
+			value.List(x),
+			value.List(
+				cond,
+				value.List(value.List(f, x), value.List(q, a)),
+				value.List(tSym, value.List(q, a)),
+			),
+		)
+		code := compileForTest(t, form)
+		body := code.Funcs[0].Code.Instrs
+		if countOp(body, vm.OpCall) != 1 {
+			t.Errorf("predicate (f x) should emit CALL, got %d", countOp(body, vm.OpCall))
+		}
+		if countOp(body, vm.OpTailCall) != 0 {
+			t.Errorf("predicate (f x) should not emit TAIL_CALL, got %d", countOp(body, vm.OpTailCall))
+		}
+	})
+
+	t.Run("top-level call emits CALL not TAIL_CALL", func(t *testing.T) {
+		// ((lambda (x) x) 'a) — outer call is at top level.
+		form := value.List(
+			value.List(lambda, value.List(x), x),
+			value.List(q, a),
+		)
+		code := compileForTest(t, form)
+		if countOp(code.Instrs, vm.OpCall) != 1 {
+			t.Errorf("top-level call should emit CALL, got %d", countOp(code.Instrs, vm.OpCall))
+		}
+		if countOp(code.Instrs, vm.OpTailCall) != 0 {
+			t.Errorf("top-level call should not emit TAIL_CALL, got %d", countOp(code.Instrs, vm.OpTailCall))
+		}
+	})
+}
+
+func compileForTest(t *testing.T, form value.Value) *vm.Code {
+	t.Helper()
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	return code
+}
+
+func countOp(instrs []vm.Instr, op vm.Opcode) int {
+	n := 0
+	for _, ins := range instrs {
+		if ins.Op == op {
+			n++
+		}
+	}
+	return n
+}
+
 func TestCompileAndRunLambdaApply(t *testing.T) {
 	q := value.Symbol{Name: "quote"}
 	lambda := value.Symbol{Name: "lambda"}

@@ -9,7 +9,7 @@ import (
 
 func Compile(v value.Value) (*vm.Code, error) {
 	c := &builder{code: &vm.Code{}}
-	if err := c.compile(v); err != nil {
+	if err := c.compile(v, false); err != nil {
 		return nil, err
 	}
 	c.emit(vm.OpRet, 0)
@@ -20,7 +20,7 @@ type builder struct {
 	code *vm.Code
 }
 
-func (b *builder) compile(v value.Value) error {
+func (b *builder) compile(v value.Value, tail bool) error {
 	switch x := v.(type) {
 	case value.Nil:
 		b.emit(vm.OpLoadConst, b.addConst(value.NIL))
@@ -36,19 +36,19 @@ func (b *builder) compile(v value.Value) error {
 		}
 		return nil
 	case *value.Pair:
-		return b.compilePair(x)
+		return b.compilePair(x, tail)
 	default:
 		return fmt.Errorf("gosp: compile: cannot compile %T", v)
 	}
 }
 
-func (b *builder) compilePair(p *value.Pair) error {
+func (b *builder) compilePair(p *value.Pair, tail bool) error {
 	if head, ok := p.Car.(value.Symbol); ok {
 		switch head.Name {
 		case "quote":
 			return b.compileQuote(p.Cdr)
 		case "cond":
-			return b.compileCond(p.Cdr)
+			return b.compileCond(p.Cdr, tail)
 		case "car":
 			return b.compileUnary("car", vm.OpCar, p.Cdr)
 		case "cdr":
@@ -63,7 +63,7 @@ func (b *builder) compilePair(p *value.Pair) error {
 			return b.compileLambda(p.Cdr)
 		}
 	}
-	return b.compileCall(p)
+	return b.compileCall(p, tail)
 }
 
 func (b *builder) compileLambda(form value.Value) error {
@@ -94,7 +94,7 @@ func buildFuncProto(form value.Value) (*vm.FuncProto, error) {
 		return nil, err
 	}
 	bb := &builder{code: &vm.Code{}}
-	if err := bb.compile(body.Car); err != nil {
+	if err := bb.compile(body.Car, true); err != nil {
 		return nil, err
 	}
 	bb.emit(vm.OpRet, 0)
@@ -118,20 +118,24 @@ func parseParams(v value.Value) ([]value.Symbol, error) {
 	return out, nil
 }
 
-func (b *builder) compileCall(p *value.Pair) error {
+func (b *builder) compileCall(p *value.Pair, tail bool) error {
 	args, err := flatArgs(p.Cdr)
 	if err != nil {
 		return err
 	}
-	if err := b.compile(p.Car); err != nil {
+	if err := b.compile(p.Car, false); err != nil {
 		return err
 	}
 	for _, a := range args {
-		if err := b.compile(a); err != nil {
+		if err := b.compile(a, false); err != nil {
 			return err
 		}
 	}
-	b.emit(vm.OpCall, len(args))
+	op := vm.OpCall
+	if tail {
+		op = vm.OpTailCall
+	}
+	b.emit(op, len(args))
 	return nil
 }
 
@@ -143,7 +147,7 @@ func (b *builder) compileUnary(name string, op vm.Opcode, args value.Value) erro
 	if len(xs) != 1 {
 		return fmt.Errorf("gosp: compile: %s: wrong number of arguments", name)
 	}
-	if err := b.compile(xs[0]); err != nil {
+	if err := b.compile(xs[0], false); err != nil {
 		return err
 	}
 	b.emit(op, 0)
@@ -158,10 +162,10 @@ func (b *builder) compileBinary(name string, op vm.Opcode, args value.Value) err
 	if len(xs) != 2 {
 		return fmt.Errorf("gosp: compile: %s: wrong number of arguments", name)
 	}
-	if err := b.compile(xs[0]); err != nil {
+	if err := b.compile(xs[0], false); err != nil {
 		return err
 	}
-	if err := b.compile(xs[1]); err != nil {
+	if err := b.compile(xs[1], false); err != nil {
 		return err
 	}
 	b.emit(op, 0)
@@ -181,7 +185,7 @@ func flatArgs(v value.Value) ([]value.Value, error) {
 	return out, nil
 }
 
-func (b *builder) compileCond(clauses value.Value) error {
+func (b *builder) compileCond(clauses value.Value, tail bool) error {
 	var endJumps []int
 	for !value.IsNil(clauses) {
 		pair, ok := clauses.(*value.Pair)
@@ -199,12 +203,12 @@ func (b *builder) compileCond(clauses value.Value) error {
 		if !value.IsNil(body.Cdr) {
 			return fmt.Errorf("gosp: compile: cond: clause must have exactly one body expression")
 		}
-		if err := b.compile(clause.Car); err != nil {
+		if err := b.compile(clause.Car, false); err != nil {
 			return err
 		}
 		jifPos := len(b.code.Instrs)
 		b.emit(vm.OpJumpIfFalse, 0)
-		if err := b.compile(body.Car); err != nil {
+		if err := b.compile(body.Car, tail); err != nil {
 			return err
 		}
 		jumpPos := len(b.code.Instrs)
