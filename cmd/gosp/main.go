@@ -2,18 +2,29 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/kqnade/gosp/internal/compiler"
 	"github.com/kqnade/gosp/internal/eval"
 	"github.com/kqnade/gosp/internal/printer"
 	"github.com/kqnade/gosp/internal/reader"
 	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/internal/vm"
 )
 
 func Run(path string, out io.Writer) error {
+	return runFile(path, out, false)
+}
+
+func RunVM(path string, out io.Writer) error {
+	return runFile(path, out, true)
+}
+
+func runFile(path string, out io.Writer, useVM bool) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("gosp: %w", err)
@@ -22,10 +33,22 @@ func Run(path string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	env := eval.NewGlobalEnv()
-	result, err := eval.EvalProgram(forms, env)
-	if err != nil {
-		return err
+	var result value.Value
+	if useVM {
+		code, err := compiler.CompileProgram(forms)
+		if err != nil {
+			return err
+		}
+		result, err = vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			return err
+		}
+	} else {
+		env := eval.NewGlobalEnv()
+		result, err = eval.EvalProgram(forms, env)
+		if err != nil {
+			return err
+		}
 	}
 	if _, err := fmt.Fprintln(out, printer.Print(result)); err != nil {
 		return err
@@ -34,7 +57,16 @@ func Run(path string, out io.Writer) error {
 }
 
 func RunInteractive(in io.Reader, out io.Writer) error {
-	env := eval.NewGlobalEnv()
+	return runInteractive(in, out, false)
+}
+
+func RunInteractiveVM(in io.Reader, out io.Writer) error {
+	return runInteractive(in, out, true)
+}
+
+func runInteractive(in io.Reader, out io.Writer, useVM bool) error {
+	treeEnv := eval.NewGlobalEnv()
+	vmEnv := value.NewEnv(nil)
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	var buf strings.Builder
@@ -60,7 +92,17 @@ func RunInteractive(in io.Reader, out io.Writer) error {
 			continue
 		}
 		for _, form := range forms {
-			v, err := eval.EvalProgram([]value.Value{form}, env)
+			var v value.Value
+			var err error
+			if useVM {
+				var code *vm.Code
+				code, err = compiler.CompileProgram([]value.Value{form})
+				if err == nil {
+					v, err = vm.Run(code, vmEnv)
+				}
+			} else {
+				v, err = eval.EvalProgram([]value.Value{form}, treeEnv)
+			}
 			if err != nil {
 				fmt.Fprintln(out, err)
 				break
@@ -94,18 +136,38 @@ func parensBalanced(src string) bool {
 }
 
 func main() {
-	if len(os.Args) == 1 {
-		if err := RunInteractive(os.Stdin, os.Stdout); err != nil {
+	useVM := flag.Bool("vm", false, "use bytecode VM backend instead of the tree-walking evaluator")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: gosp [-vm] [file]")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) == 0 {
+		var err error
+		if *useVM {
+			err = RunInteractiveVM(os.Stdin, os.Stdout)
+		} else {
+			err = RunInteractive(os.Stdin, os.Stdout)
+		}
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return
 	}
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: gosp [file]")
+	if len(args) != 1 {
+		flag.Usage()
 		os.Exit(2)
 	}
-	if err := Run(os.Args[1], os.Stdout); err != nil {
+	var err error
+	if *useVM {
+		err = RunVM(args[0], os.Stdout)
+	} else {
+		err = Run(args[0], os.Stdout)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
