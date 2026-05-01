@@ -61,9 +61,34 @@ func (b *builder) compilePair(p *value.Pair, tail bool) error {
 			return b.compileBinary("eq", vm.OpEq, p.Cdr)
 		case "lambda":
 			return b.compileLambda(p.Cdr)
+		case "label":
+			return b.compileLabel(p.Cdr)
 		}
 	}
 	return b.compileCall(p, tail)
+}
+
+func (b *builder) compileLabel(form value.Value) error {
+	pair, ok := form.(*value.Pair)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: missing name")
+	}
+	name, ok := pair.Car.(value.Symbol)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: name must be a symbol")
+	}
+	rest, ok := pair.Cdr.(*value.Pair)
+	if !ok {
+		return fmt.Errorf("gosp: compile: label: missing expression")
+	}
+	if !value.IsNil(rest.Cdr) {
+		return fmt.Errorf("gosp: compile: label: too many arguments")
+	}
+	if err := b.compile(rest.Car, false); err != nil {
+		return err
+	}
+	b.emit(vm.OpMakeLabel, b.addSym(name.Name))
+	return nil
 }
 
 func (b *builder) compileLambda(form value.Value) error {

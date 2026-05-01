@@ -121,6 +121,19 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 				Body:   proto.Code,
 				Env:    env,
 			})
+		case OpMakeLabel:
+			if len(stack) == 0 {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: make-label: empty stack")
+			}
+			top := stack[len(stack)-1]
+			closure, ok := top.(*value.Closure)
+			if !ok {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: label: expression must evaluate to a function")
+			}
+			name := value.Symbol{Name: code.Syms[ins.Arg]}
+			bound := *closure
+			bound.Self = &name
+			stack[len(stack)-1] = &bound
 		case OpCall:
 			closure, args, err := popCall(&stack, ins.Arg)
 			if err != nil {

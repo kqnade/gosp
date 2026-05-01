@@ -130,6 +130,120 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunLabel(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	label := value.Symbol{Name: "label"}
+	cond := value.Symbol{Name: "cond"}
+	eq := value.Symbol{Name: "eq"}
+	cdr := value.Symbol{Name: "cdr"}
+	drop := value.Symbol{Name: "drop"}
+	xs := value.Symbol{Name: "xs"}
+	x := value.Symbol{Name: "x"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	c := value.Symbol{Name: "c"}
+	done := value.Symbol{Name: "done"}
+	okSym := value.Symbol{Name: "ok"}
+	tSym := value.Symbol{Name: "t"}
+	ff := value.Symbol{Name: "ff"}
+
+	t.Run("label of identity is callable", func(t *testing.T) {
+		// ((label F (lambda (x) x)) 'a) → a
+		form := value.List(
+			value.List(label, value.Symbol{Name: "F"}, value.List(lambda, value.List(x), x)),
+			value.List(q, a),
+		)
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, a) {
+			t.Errorf("got %v, want a", got)
+		}
+	})
+
+	t.Run("recursive drop via label", func(t *testing.T) {
+		// ((label drop (lambda (xs) (cond ((eq xs 'done) 'ok) (t (drop (cdr xs)))))) '(a b c done))
+		body := value.List(
+			cond,
+			value.List(value.List(eq, xs, value.List(q, done)), value.List(q, okSym)),
+			value.List(tSym, value.List(drop, value.List(cdr, xs))),
+		)
+		labFn := value.List(label, drop, value.List(lambda, value.List(xs), body))
+		// Build (a . (b . (c . done))) so traversal terminates at `done`.
+		listArg := value.Cons(a, value.Cons(b, value.Cons(c, done)))
+		form := value.List(labFn, value.List(q, listArg))
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, okSym) {
+			t.Errorf("got %v, want ok", got)
+		}
+	})
+
+	t.Run("ff walker visits leaves", func(t *testing.T) {
+		// (label ff (lambda (x) (cond ((atom x) x) (t (ff (car x))))))
+		// applied to ((a b) c) → a (descend leftmost)
+		body := value.List(
+			cond,
+			value.List(value.List(value.Symbol{Name: "atom"}, x), x),
+			value.List(tSym, value.List(ff, value.List(value.Symbol{Name: "car"}, x))),
+		)
+		labFn := value.List(label, ff, value.List(lambda, value.List(x), body))
+		form := value.List(labFn, value.List(q, value.List(value.List(a, b), c)))
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, a) {
+			t.Errorf("got %v, want a", got)
+		}
+	})
+
+	t.Run("label expression that is not a function fails at runtime", func(t *testing.T) {
+		form := value.List(label, value.Symbol{Name: "F"}, value.List(q, a))
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		if _, err := vm.Run(code, value.NewEnv(nil)); err == nil {
+			t.Fatal("expected runtime error for non-function label, got nil")
+		}
+	})
+
+	t.Run("label malformed", func(t *testing.T) {
+		cases := []struct {
+			name string
+			form value.Value
+		}{
+			{"missing name", value.List(label)},
+			{"name not symbol", value.List(label, value.List(q, a), value.List(q, a))},
+			{"too many", value.List(label, value.Symbol{Name: "F"}, value.List(q, a), value.List(q, a))},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if _, err := Compile(tc.form); err == nil {
+					t.Errorf("expected compile error, got nil")
+				}
+			})
+		}
+	})
+}
+
 func TestVMTailCallBounded(t *testing.T) {
 	const n = 1000
 
