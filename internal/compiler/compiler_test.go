@@ -72,6 +72,64 @@ func TestCompileVarLookup(t *testing.T) {
 	}
 }
 
+func TestCompileQuoteSymbol(t *testing.T) {
+	form := value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"})
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	wantInstrs := []vm.Instr{{Op: vm.OpLoadConst, Arg: 0}, {Op: vm.OpRet}}
+	if !equalInstrs(code.Instrs, wantInstrs) {
+		t.Errorf("Instrs = %v, want %v", code.Instrs, wantInstrs)
+	}
+	if len(code.Consts) != 1 || !value.Eq(code.Consts[0], value.Symbol{Name: "a"}) {
+		t.Errorf("Consts = %v, want [a]", code.Consts)
+	}
+	if len(code.Syms) != 0 {
+		t.Errorf("Syms = %v, want []", code.Syms)
+	}
+}
+
+func TestCompileQuoteList(t *testing.T) {
+	quoted := value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"})
+	form := value.List(value.Symbol{Name: "quote"}, quoted)
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	wantInstrs := []vm.Instr{{Op: vm.OpLoadConst, Arg: 0}, {Op: vm.OpRet}}
+	if !equalInstrs(code.Instrs, wantInstrs) {
+		t.Errorf("Instrs = %v, want %v", code.Instrs, wantInstrs)
+	}
+	if len(code.Consts) != 1 {
+		t.Fatalf("Consts len = %d, want 1", len(code.Consts))
+	}
+	got, ok := code.Consts[0].(*value.Pair)
+	if !ok {
+		t.Fatalf("Consts[0] = %T, want *Pair", code.Consts[0])
+	}
+	if !value.Eq(got.Car, value.Symbol{Name: "a"}) {
+		t.Errorf("Car = %v, want a", got.Car)
+	}
+}
+
+func TestCompileQuoteWrongArity(t *testing.T) {
+	cases := []struct {
+		name string
+		form value.Value
+	}{
+		{"no args", value.List(value.Symbol{Name: "quote"})},
+		{"too many", value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}, value.Symbol{Name: "b"})},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.form); err == nil {
+				t.Errorf("expected error, got nil")
+			}
+		})
+	}
+}
+
 func equalInstrs(a, b []vm.Instr) bool {
 	if len(a) != len(b) {
 		return false

@@ -37,9 +37,33 @@ func (c *Code) compile(v value.Value) error {
 			c.emit(vm.OpLoadVar, c.addSym(x.Name))
 		}
 		return nil
+	case *value.Pair:
+		return c.compilePair(x)
 	default:
 		return fmt.Errorf("gosp: compile: cannot compile %T", v)
 	}
+}
+
+func (c *Code) compilePair(p *value.Pair) error {
+	if head, ok := p.Car.(value.Symbol); ok {
+		switch head.Name {
+		case "quote":
+			return c.compileQuote(p.Cdr)
+		}
+	}
+	return fmt.Errorf("gosp: compile: cannot compile call form")
+}
+
+func (c *Code) compileQuote(args value.Value) error {
+	pair, ok := args.(*value.Pair)
+	if !ok {
+		return fmt.Errorf("gosp: compile: quote: wrong number of arguments")
+	}
+	if !value.IsNil(pair.Cdr) {
+		return fmt.Errorf("gosp: compile: quote: wrong number of arguments")
+	}
+	c.emit(vm.OpLoadConst, c.addConst(pair.Car))
+	return nil
 }
 
 func (c *Code) emit(op vm.Opcode, arg int) {
