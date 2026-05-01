@@ -22,7 +22,30 @@ func Eval(v value.Value, env *value.Env) (value.Value, error) {
 			return nil, fmt.Errorf("gosp: eval: unbound symbol: %s", x.Name)
 		}
 		return got, nil
+	case *value.Pair:
+		return evalPair(x, env)
 	default:
 		return nil, fmt.Errorf("gosp: eval: cannot evaluate %T", v)
 	}
+}
+
+func evalPair(p *value.Pair, env *value.Env) (value.Value, error) {
+	if head, ok := p.Car.(value.Symbol); ok {
+		switch head.Name {
+		case "quote":
+			return evalQuote(p.Cdr)
+		}
+	}
+	return nil, fmt.Errorf("gosp: eval: cannot apply %v", p.Car)
+}
+
+func evalQuote(args value.Value) (value.Value, error) {
+	pair, ok := args.(*value.Pair)
+	if !ok {
+		return nil, fmt.Errorf("gosp: eval: quote: wrong number of arguments")
+	}
+	if !value.IsNil(pair.Cdr) {
+		return nil, fmt.Errorf("gosp: eval: quote: wrong number of arguments")
+	}
+	return pair.Car, nil
 }

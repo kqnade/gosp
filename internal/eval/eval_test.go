@@ -60,3 +60,41 @@ func TestEvalUnboundSymbol(t *testing.T) {
 		t.Fatalf("Eval(missing) expected error, got nil")
 	}
 }
+
+func TestEvalQuoteSymbol(t *testing.T) {
+	env := value.NewEnv(nil)
+	form := value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "x"})
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval((quote x)) error: %v", err)
+	}
+	sym, ok := got.(value.Symbol)
+	if !ok || sym.Name != "x" {
+		t.Fatalf("Eval((quote x)) = %v, want symbol x", got)
+	}
+}
+
+func TestEvalQuoteList(t *testing.T) {
+	env := value.NewEnv(nil)
+	quoted := value.List(value.Symbol{Name: "a"}, value.Symbol{Name: "b"})
+	form := value.List(value.Symbol{Name: "quote"}, quoted)
+	got, err := Eval(form, env)
+	if err != nil {
+		t.Fatalf("Eval((quote (a b))) error: %v", err)
+	}
+	if got != quoted {
+		t.Fatalf("Eval((quote (a b))) = %v, want %v", got, quoted)
+	}
+}
+
+func TestEvalQuoteArityError(t *testing.T) {
+	env := value.NewEnv(nil)
+	form := value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}, value.Symbol{Name: "b"})
+	if _, err := Eval(form, env); err == nil {
+		t.Fatalf("Eval((quote a b)) expected error, got nil")
+	}
+	form2 := value.List(value.Symbol{Name: "quote"})
+	if _, err := Eval(form2, env); err == nil {
+		t.Fatalf("Eval((quote)) expected error, got nil")
+	}
+}
