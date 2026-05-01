@@ -19,6 +19,7 @@ type Pair struct {
 type Func struct {
 	Params []Symbol
 	Body   Value
+	Env    *Env
 	Self   *Symbol
 }
 
