@@ -67,6 +67,46 @@ func TestParity(t *testing.T) {
 	}
 }
 
+func TestParityMetacircular(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "examples"))
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	src, err := os.ReadFile(filepath.Join(root, "metacircular.lisp"))
+	if err != nil {
+		t.Fatalf("read program: %v", err)
+	}
+	expectedBytes, err := os.ReadFile(filepath.Join(root, "metacircular.expected"))
+	if err != nil {
+		t.Fatalf("read expected: %v", err)
+	}
+	expected := string(expectedBytes)
+
+	forms, err := reader.ReadAll(string(src))
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	treeOut, err := runTreeWalker(forms)
+	if err != nil {
+		t.Fatalf("tree-walker: %v", err)
+	}
+	vmOut, err := runVM(forms)
+	if err != nil {
+		t.Fatalf("vm: %v", err)
+	}
+
+	if treeOut != expected {
+		t.Errorf("tree-walker output = %q, want %q", treeOut, expected)
+	}
+	if vmOut != expected {
+		t.Errorf("vm output = %q, want %q", vmOut, expected)
+	}
+	if treeOut != vmOut {
+		t.Errorf("backend mismatch: tree-walker = %q, vm = %q", treeOut, vmOut)
+	}
+}
+
 func runTreeWalker(forms []value.Value) (string, error) {
 	env := eval.NewGlobalEnv()
 	result, err := eval.EvalProgram(forms, env)
