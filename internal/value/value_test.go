@@ -94,3 +94,47 @@ func TestEq(t *testing.T) {
 		t.Fatal("pairs should not be eq")
 	}
 }
+
+func TestFuncSatisfiesValueAndStoresFields(t *testing.T) {
+	params := []Symbol{{Name: "x"}}
+	body := Symbol{Name: "x"}
+	self := Symbol{Name: "id"}
+	fn := &Func{Params: params, Body: body, Self: &self}
+
+	var _ Value = fn
+	if fn.Params[0] != params[0] {
+		t.Fatalf("Params = %#v, want %#v", fn.Params, params)
+	}
+	if fn.Body != body {
+		t.Fatalf("Body = %#v, want %#v", fn.Body, body)
+	}
+	if fn.Self != &self {
+		t.Fatalf("Self = %#v, want %#v", fn.Self, &self)
+	}
+}
+
+func TestBuiltinSatisfiesValueAndStoresFields(t *testing.T) {
+	called := false
+	builtin := Builtin{
+		Name: "atom",
+		Fn: func(args []Value) (Value, error) {
+			called = true
+			return NIL, nil
+		},
+	}
+
+	var _ Value = builtin
+	if builtin.Name != "atom" {
+		t.Fatalf("Name = %q, want atom", builtin.Name)
+	}
+	got, err := builtin.Fn(nil)
+	if err != nil {
+		t.Fatalf("Fn returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("Fn was not called")
+	}
+	if !IsNil(got) {
+		t.Fatalf("Fn returned %#v, want NIL", got)
+	}
+}

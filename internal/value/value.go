@@ -16,11 +16,24 @@ type Pair struct {
 	Cdr Value
 }
 
+type Func struct {
+	Params []Symbol
+	Body   Value
+	Self   *Symbol
+}
+
+type Builtin struct {
+	Name string
+	Fn   func(args []Value) (Value, error)
+}
+
 var NIL Value = Nil{}
 
-func (Symbol) lispValue() {}
-func (Nil) lispValue()    {}
-func (*Pair) lispValue()  {}
+func (Symbol) lispValue()  {}
+func (Nil) lispValue()     {}
+func (*Pair) lispValue()   {}
+func (*Func) lispValue()   {}
+func (Builtin) lispValue() {}
 
 func Cons(a, b Value) *Pair {
 	return &Pair{Car: a, Cdr: b}
