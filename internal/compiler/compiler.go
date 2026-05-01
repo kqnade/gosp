@@ -49,9 +49,61 @@ func (b *builder) compilePair(p *value.Pair) error {
 			return b.compileQuote(p.Cdr)
 		case "cond":
 			return b.compileCond(p.Cdr)
+		case "car":
+			return b.compileUnary("car", vm.OpCar, p.Cdr)
+		case "cdr":
+			return b.compileUnary("cdr", vm.OpCdr, p.Cdr)
+		case "cons":
+			return b.compileBinary("cons", vm.OpCons, p.Cdr)
 		}
 	}
 	return fmt.Errorf("gosp: compile: cannot compile call form")
+}
+
+func (b *builder) compileUnary(name string, op vm.Opcode, args value.Value) error {
+	xs, err := flatArgs(args)
+	if err != nil {
+		return err
+	}
+	if len(xs) != 1 {
+		return fmt.Errorf("gosp: compile: %s: wrong number of arguments", name)
+	}
+	if err := b.compile(xs[0]); err != nil {
+		return err
+	}
+	b.emit(op, 0)
+	return nil
+}
+
+func (b *builder) compileBinary(name string, op vm.Opcode, args value.Value) error {
+	xs, err := flatArgs(args)
+	if err != nil {
+		return err
+	}
+	if len(xs) != 2 {
+		return fmt.Errorf("gosp: compile: %s: wrong number of arguments", name)
+	}
+	if err := b.compile(xs[0]); err != nil {
+		return err
+	}
+	if err := b.compile(xs[1]); err != nil {
+		return err
+	}
+	b.emit(op, 0)
+	return nil
+}
+
+func flatArgs(v value.Value) ([]value.Value, error) {
+	var out []value.Value
+	for !value.IsNil(v) {
+		pair, ok := v.(*value.Pair)
+		if !ok {
+			return nil, fmt.Errorf("gosp: compile: improper argument list")
+		}
+		out = append(out, pair.Car)
+		v = pair.Cdr
+	}
+	return out, nil
 }
 
 func (b *builder) compileCond(clauses value.Value) error {

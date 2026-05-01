@@ -38,6 +38,34 @@ func Run(code *Code, env *value.Env) (value.Value, error) {
 			if value.IsNil(top) {
 				pc = ins.Arg
 			}
+		case OpCar:
+			if len(stack) == 0 {
+				return nil, fmt.Errorf("gosp: vm: car: empty stack")
+			}
+			top := stack[len(stack)-1]
+			pair, ok := top.(*value.Pair)
+			if !ok {
+				return nil, fmt.Errorf("gosp: vm: car: argument must be a pair")
+			}
+			stack[len(stack)-1] = pair.Car
+		case OpCdr:
+			if len(stack) == 0 {
+				return nil, fmt.Errorf("gosp: vm: cdr: empty stack")
+			}
+			top := stack[len(stack)-1]
+			pair, ok := top.(*value.Pair)
+			if !ok {
+				return nil, fmt.Errorf("gosp: vm: cdr: argument must be a pair")
+			}
+			stack[len(stack)-1] = pair.Cdr
+		case OpCons:
+			if len(stack) < 2 {
+				return nil, fmt.Errorf("gosp: vm: cons: stack underflow")
+			}
+			cdr := stack[len(stack)-1]
+			car := stack[len(stack)-2]
+			stack = stack[:len(stack)-1]
+			stack[len(stack)-1] = value.Cons(car, cdr)
 		case OpRet:
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("gosp: vm: ret on empty stack")

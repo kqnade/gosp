@@ -130,6 +130,111 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunCarCdrCons(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	c := value.Symbol{Name: "c"}
+	abc := value.List(a, b, c)
+
+	cases := []struct {
+		name string
+		form value.Value
+		want value.Value
+	}{
+		{
+			name: "car of (a b c)",
+			form: value.List(value.Symbol{Name: "car"}, value.List(q, abc)),
+			want: a,
+		},
+		{
+			name: "cdr of (a b c) is (b c)",
+			form: value.List(value.Symbol{Name: "cdr"}, value.List(q, abc)),
+			want: value.List(b, c),
+		},
+		{
+			name: "cons a onto (b c)",
+			form: value.List(
+				value.Symbol{Name: "cons"},
+				value.List(q, a),
+				value.List(q, value.List(b, c)),
+			),
+			want: value.List(a, b, c),
+		},
+		{
+			name: "car of cdr — composition",
+			form: value.List(
+				value.Symbol{Name: "car"},
+				value.List(value.Symbol{Name: "cdr"}, value.List(q, abc)),
+			),
+			want: b,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, err := Compile(tc.form)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			got, err := vm.Run(code, value.NewEnv(nil))
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !valueEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompileCarCdrConsErrors(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	a := value.Symbol{Name: "a"}
+
+	cases := []struct {
+		name string
+		form value.Value
+	}{
+		{"car wrong arity", value.List(value.Symbol{Name: "car"})},
+		{"car too many", value.List(value.Symbol{Name: "car"}, value.List(q, a), value.List(q, a))},
+		{"cdr wrong arity", value.List(value.Symbol{Name: "cdr"})},
+		{"cons one arg", value.List(value.Symbol{Name: "cons"}, value.List(q, a))},
+		{"cons three args", value.List(value.Symbol{Name: "cons"}, value.List(q, a), value.List(q, a), value.List(q, a))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.form); err == nil {
+				t.Errorf("expected compile error, got nil")
+			}
+		})
+	}
+}
+
+func TestRunCarOfAtomFails(t *testing.T) {
+	form := value.List(value.Symbol{Name: "car"}, value.List(value.Symbol{Name: "quote"}, value.Symbol{Name: "a"}))
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if _, err := vm.Run(code, value.NewEnv(nil)); err == nil {
+		t.Fatal("expected runtime error for car of symbol, got nil")
+	}
+}
+
+// valueEqual compares two values for structural equality (symbols + nested pairs).
+func valueEqual(a, b value.Value) bool {
+	if value.IsAtom(a) || value.IsAtom(b) {
+		return value.Eq(a, b)
+	}
+	pa, oka := a.(*value.Pair)
+	pb, okb := b.(*value.Pair)
+	if !oka || !okb {
+		return false
+	}
+	return valueEqual(pa.Car, pb.Car) && valueEqual(pa.Cdr, pb.Cdr)
+}
+
 func TestCompileAndRunCond(t *testing.T) {
 	t_ := value.Symbol{Name: "t"}
 	nilSym := value.Symbol{Name: "nil"}
