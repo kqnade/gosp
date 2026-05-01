@@ -47,9 +47,51 @@ func (b *builder) compilePair(p *value.Pair) error {
 		switch head.Name {
 		case "quote":
 			return b.compileQuote(p.Cdr)
+		case "cond":
+			return b.compileCond(p.Cdr)
 		}
 	}
 	return fmt.Errorf("gosp: compile: cannot compile call form")
+}
+
+func (b *builder) compileCond(clauses value.Value) error {
+	var endJumps []int
+	for !value.IsNil(clauses) {
+		pair, ok := clauses.(*value.Pair)
+		if !ok {
+			return fmt.Errorf("gosp: compile: cond: malformed clause list")
+		}
+		clause, ok := pair.Car.(*value.Pair)
+		if !ok {
+			return fmt.Errorf("gosp: compile: cond: clause must be a list")
+		}
+		body, ok := clause.Cdr.(*value.Pair)
+		if !ok {
+			return fmt.Errorf("gosp: compile: cond: clause must have body")
+		}
+		if !value.IsNil(body.Cdr) {
+			return fmt.Errorf("gosp: compile: cond: clause must have exactly one body expression")
+		}
+		if err := b.compile(clause.Car); err != nil {
+			return err
+		}
+		jifPos := len(b.code.Instrs)
+		b.emit(vm.OpJumpIfFalse, 0)
+		if err := b.compile(body.Car); err != nil {
+			return err
+		}
+		jumpPos := len(b.code.Instrs)
+		b.emit(vm.OpJump, 0)
+		endJumps = append(endJumps, jumpPos)
+		b.code.Instrs[jifPos].Arg = len(b.code.Instrs)
+		clauses = pair.Cdr
+	}
+	b.emit(vm.OpLoadConst, b.addConst(value.NIL))
+	end := len(b.code.Instrs)
+	for _, p := range endJumps {
+		b.code.Instrs[p].Arg = end
+	}
+	return nil
 }
 
 func (b *builder) compileQuote(args value.Value) error {

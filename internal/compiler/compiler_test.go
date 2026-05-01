@@ -130,6 +130,101 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunCond(t *testing.T) {
+	t_ := value.Symbol{Name: "t"}
+	nilSym := value.Symbol{Name: "nil"}
+	quote := value.Symbol{Name: "quote"}
+	cond := value.Symbol{Name: "cond"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+
+	cases := []struct {
+		name string
+		form value.Value
+		env  func() *value.Env
+		want value.Value
+	}{
+		{
+			name: "empty cond returns ()",
+			form: value.List(cond),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.NIL,
+		},
+		{
+			name: "single t clause",
+			form: value.List(cond, value.List(t_, value.List(quote, a))),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: a,
+		},
+		{
+			name: "first clause false, second wins",
+			form: value.List(
+				cond,
+				value.List(nilSym, value.List(quote, a)),
+				value.List(t_, value.List(quote, b)),
+			),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: b,
+		},
+		{
+			name: "no truthy clause returns ()",
+			form: value.List(cond, value.List(nilSym, value.List(quote, a))),
+			env:  func() *value.Env { return value.NewEnv(nil) },
+			want: value.NIL,
+		},
+		{
+			name: "bound symbol is truthy",
+			form: value.List(
+				cond,
+				value.List(value.Symbol{Name: "x"}, value.List(quote, a)),
+				value.List(t_, value.List(quote, b)),
+			),
+			env: func() *value.Env {
+				e := value.NewEnv(nil)
+				e.Define("x", value.Symbol{Name: "y"})
+				return e
+			},
+			want: a,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, err := Compile(tc.form)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			got, err := vm.Run(code, tc.env())
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !value.Eq(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompileCondMalformed(t *testing.T) {
+	cond := value.Symbol{Name: "cond"}
+	a := value.Symbol{Name: "a"}
+
+	cases := []struct {
+		name string
+		form value.Value
+	}{
+		{"non-list clause", value.List(cond, a)},
+		{"missing body", value.List(cond, value.List(a))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.form); err == nil {
+				t.Errorf("expected error, got nil")
+			}
+		})
+	}
+}
+
 func TestCompileAndRunAtom(t *testing.T) {
 	cases := []struct {
 		name string
