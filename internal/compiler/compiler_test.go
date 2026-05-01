@@ -130,6 +130,51 @@ func TestCompileQuoteWrongArity(t *testing.T) {
 	}
 }
 
+func TestVMTailCallBounded(t *testing.T) {
+	const n = 1000
+
+	xs := value.Symbol{Name: "xs"}
+	loop := value.Symbol{Name: "loop"}
+	self_ := value.Symbol{Name: "self"}
+	q := value.Symbol{Name: "quote"}
+	done := value.Symbol{Name: "done"}
+	tSym := value.Symbol{Name: "t"}
+	cond := value.Symbol{Name: "cond"}
+	eq := value.Symbol{Name: "eq"}
+	cdr := value.Symbol{Name: "cdr"}
+	lambda := value.Symbol{Name: "lambda"}
+	okSym := value.Symbol{Name: "ok"}
+
+	list := value.Value(done)
+	for range n {
+		list = value.Cons(value.Symbol{Name: "x"}, list)
+	}
+
+	body := value.List(
+		cond,
+		value.List(value.List(eq, xs, value.List(q, done)), value.List(q, okSym)),
+		value.List(tSym, value.List(loop, loop, value.List(cdr, xs))),
+	)
+	inner := value.List(lambda, value.List(loop, xs), body)
+	outer := value.List(lambda, value.List(self_), value.List(self_, self_, value.List(q, list)))
+	form := value.List(outer, inner)
+
+	code, err := Compile(form)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	got, max, err := vm.RunWithStats(code, value.NewEnv(nil))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !value.Eq(got, okSym) {
+		t.Errorf("got %v, want ok", got)
+	}
+	if max > 16 {
+		t.Errorf("max frame depth = %d for %d tail-iterations, want bounded by ~16", max, n)
+	}
+}
+
 func TestTailPositionEmission(t *testing.T) {
 	q := value.Symbol{Name: "quote"}
 	lambda := value.Symbol{Name: "lambda"}
