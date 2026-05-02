@@ -852,6 +852,121 @@ func TestRunCarOfAtomFails(t *testing.T) {
 	}
 }
 
+func TestTopLevelRebindingPrimitive(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	label := value.Symbol{Name: "label"}
+	cons := value.Symbol{Name: "cons"}
+	x := value.Symbol{Name: "x"}
+	a := value.Symbol{Name: "a"}
+
+	t.Run("(label car ...) makes later (car ...) use the rebound car", func(t *testing.T) {
+		// Forms:
+		//   (label car (lambda (x) (cons x '())))
+		//   (car 'a)
+		// Expected: (a). With the bug, (car 'a) is OpCar applied to symbol
+		// 'a — a runtime error.
+		car := value.Symbol{Name: "car"}
+		labelForm := value.List(
+			label, car,
+			value.List(lambda, value.List(x), value.List(cons, x, value.List(q, value.NIL))),
+		)
+		callForm := value.List(car, value.List(q, a))
+
+		code, err := CompileProgram([]value.Value{labelForm, callForm})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		// The top-level call to `car` after the rebinding must NOT lower
+		// to OpCar; it should emit a regular CALL through env lookup.
+		if countOp(code.Instrs, vm.OpCar) != 0 {
+			t.Errorf("rebound (car ...) at top level must not lower to OpCar; got %v", code.Instrs)
+		}
+
+		got, err := vm.Run(code, vm.NewGlobalEnv())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		want := value.List(a)
+		if !valueEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("rebinding propagates into a later lambda body", func(t *testing.T) {
+		// Forms:
+		//   (label cdr (lambda (xs) xs))   ; rebinds cdr to identity
+		//   (label foo (lambda (xs) (cdr xs)))
+		//   (foo '(a b))
+		// Expected: (a b). foo's body is compiled AFTER cdr is rebound,
+		// so (cdr xs) inside foo must NOT lower to OpCdr.
+		cdr := value.Symbol{Name: "cdr"}
+		foo := value.Symbol{Name: "foo"}
+		xs := value.Symbol{Name: "xs"}
+		b := value.Symbol{Name: "b"}
+
+		labelCdr := value.List(label, cdr, value.List(lambda, value.List(xs), xs))
+		labelFoo := value.List(label, foo, value.List(lambda, value.List(xs), value.List(cdr, xs)))
+		callFoo := value.List(foo, value.List(q, value.List(a, b)))
+
+		code, err := CompileProgram([]value.Value{labelCdr, labelFoo, callFoo})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		// foo is the second FuncProto registered (cdr's lambda is the
+		// first). Both must be free of OpCdr — cdr's because its body
+		// uses no cdr; foo's because cdr is rebound at compile time.
+		for i, fp := range code.Funcs {
+			if countOp(fp.Code.Instrs, vm.OpCdr) != 0 {
+				t.Errorf("FuncProto[%d] must not lower (cdr ...) to OpCdr after rebinding: %v",
+					i, fp.Code.Instrs)
+			}
+		}
+
+		got, err := vm.Run(code, vm.NewGlobalEnv())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		want := value.List(a, b)
+		if !valueEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("compile-time arity check is preserved for unrebound primitives", func(t *testing.T) {
+		// (car) at top level (no prior rebinding) must still be a
+		// compile-time error. Strategy B retains the optimization for
+		// the unrebound case so arity is validated at compile time.
+		form := value.List(value.Symbol{Name: "car"})
+		if _, err := CompileProgram([]value.Value{form}); err == nil {
+			t.Error("expected compile-time arity error for (car), got nil")
+		}
+	})
+
+	t.Run("after rebinding, primitive arity is no longer compile-time enforced", func(t *testing.T) {
+		// Once `car` is rebound, the compiler can no longer assume the
+		// primitive's arity. (car a b) must compile cleanly and dispatch
+		// to the rebound function at runtime.
+		car := value.Symbol{Name: "car"}
+		labelForm := value.List(
+			label, car,
+			value.List(lambda, value.List(x, value.Symbol{Name: "y"}), x),
+		)
+		callForm := value.List(car, value.List(q, a), value.List(q, value.Symbol{Name: "b"}))
+		code, err := CompileProgram([]value.Value{labelForm, callForm})
+		if err != nil {
+			t.Fatalf("CompileProgram: %v", err)
+		}
+		got, err := vm.Run(code, vm.NewGlobalEnv())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, a) {
+			t.Errorf("got %v, want a", got)
+		}
+	})
+}
+
 func TestLocalShadowingPrimitives(t *testing.T) {
 	q := value.Symbol{Name: "quote"}
 	lambda := value.Symbol{Name: "lambda"}

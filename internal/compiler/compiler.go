@@ -68,6 +68,9 @@ func (b *builder) compileTopLevelLabel(form value.Value) error {
 		return err
 	}
 	b.emit(vm.OpDefineGlobal, b.addSym(name.Name))
+	// Subsequent forms (and any lambda body compiled after this point)
+	// must dispatch this name through env lookup, not a fixed opcode.
+	b.rebound = extendRebound(b.rebound, name.Name)
 	return nil
 }
 
@@ -80,6 +83,14 @@ type builder struct {
 	// must go through env lookup rather than be lowered to a fixed
 	// opcode. nil means top level (no local bindings).
 	locals map[string]bool
+	// rebound tracks names that have been redefined by a prior
+	// top-level (label NAME ...) form in the same CompileProgram run.
+	// A primitive whose name has been rebound must not be lowered to
+	// its fixed opcode — it must dispatch through env lookup so the
+	// new binding wins. The set is a snapshot at the time the current
+	// builder was constructed; updates happen on the top-level builder
+	// only, and lambda bodies inherit a snapshot.
+	rebound map[string]bool
 }
 
 func (b *builder) isLocal(name string) bool {
@@ -89,7 +100,25 @@ func (b *builder) isLocal(name string) bool {
 	return b.locals[name]
 }
 
+func (b *builder) isRebound(name string) bool {
+	if b.rebound == nil {
+		return false
+	}
+	return b.rebound[name]
+}
+
 func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+	out := make(map[string]bool, len(parent)+len(names))
+	for k, v := range parent {
+		out[k] = v
+	}
+	for _, n := range names {
+		out[n] = true
+	}
+	return out
+}
+
+func extendRebound(parent map[string]bool, names ...string) map[string]bool {
 	out := make(map[string]bool, len(parent)+len(names))
 	for k, v := range parent {
 		out[k] = v
@@ -134,7 +163,7 @@ func (b *builder) compilePair(p *value.Pair, tail bool) error {
 		case "label":
 			return b.compileLabel(p.Cdr)
 		}
-		if !b.isLocal(head.Name) {
+		if !b.isLocal(head.Name) && !b.isRebound(head.Name) {
 			switch head.Name {
 			case "car":
 				return b.compileUnary("car", vm.OpCar, p.Cdr)
@@ -182,7 +211,7 @@ func (b *builder) compileLabel(form value.Value) error {
 func (b *builder) compileLabelBody(expr value.Value, selfName string) error {
 	if exprPair, ok := expr.(*value.Pair); ok {
 		if head, ok := exprPair.Car.(value.Symbol); ok && head.Name == "lambda" {
-			proto, err := buildFuncProto(exprPair.Cdr, extendLocals(b.locals, selfName))
+			proto, err := buildFuncProto(exprPair.Cdr, extendLocals(b.locals, selfName), b.rebound)
 			if err != nil {
 				return err
 			}
@@ -196,7 +225,7 @@ func (b *builder) compileLabelBody(expr value.Value, selfName string) error {
 }
 
 func (b *builder) compileLambda(form value.Value) error {
-	proto, err := buildFuncProto(form, b.locals)
+	proto, err := buildFuncProto(form, b.locals, b.rebound)
 	if err != nil {
 		return err
 	}
@@ -206,7 +235,7 @@ func (b *builder) compileLambda(form value.Value) error {
 	return nil
 }
 
-func buildFuncProto(form value.Value, parentLocals map[string]bool) (*vm.FuncProto, error) {
+func buildFuncProto(form value.Value, parentLocals, parentRebound map[string]bool) (*vm.FuncProto, error) {
 	pair, ok := form.(*value.Pair)
 	if !ok {
 		return nil, fmt.Errorf("gosp: compile: lambda: missing parameter list")
@@ -226,7 +255,11 @@ func buildFuncProto(form value.Value, parentLocals map[string]bool) (*vm.FuncPro
 	for i, p := range params {
 		names[i] = p.Name
 	}
-	bb := &builder{code: &vm.Code{}, locals: extendLocals(parentLocals, names...)}
+	bb := &builder{
+		code:    &vm.Code{},
+		locals:  extendLocals(parentLocals, names...),
+		rebound: parentRebound,
+	}
 	if err := bb.compile(body.Car, true); err != nil {
 		return nil, err
 	}
