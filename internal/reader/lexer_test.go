@@ -52,6 +52,21 @@ func TestTokenizeCommentsAndWhitespace(t *testing.T) {
 	}
 }
 
+func TestTokenizeSemicolonAdjacentToSymbol(t *testing.T) {
+	got, err := Tokenize("foo;skip\nbar")
+	if err != nil {
+		t.Fatalf("Tokenize returned error: %v", err)
+	}
+
+	want := []Token{
+		{Kind: TokenSymbol, Lexeme: "foo"},
+		{Kind: TokenSymbol, Lexeme: "bar"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Tokenize = %#v, want %#v", got, want)
+	}
+}
+
 func TestTokenizeQuoteSymbol(t *testing.T) {
 	got, err := Tokenize("'a")
 	if err != nil {

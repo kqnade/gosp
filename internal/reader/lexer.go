@@ -48,5 +48,5 @@ func Tokenize(input string) ([]Token, error) {
 }
 
 func isDelimiter(r rune) bool {
-	return unicode.IsSpace(r) || r == '(' || r == ')' || r == '\''
+	return unicode.IsSpace(r) || r == '(' || r == ')' || r == '\'' || r == ';'
 }
