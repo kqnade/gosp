@@ -37,8 +37,14 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 		pc++
 		switch ins.Op {
 		case OpLoadConst:
+			if ins.Arg < 0 || ins.Arg >= len(code.Consts) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s arg %d", ins.Op, ins.Arg)
+			}
 			stack = append(stack, code.Consts[ins.Arg])
 		case OpLoadVar:
+			if ins.Arg < 0 || ins.Arg >= len(code.Syms) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s arg %d", ins.Op, ins.Arg)
+			}
 			name := code.Syms[ins.Arg]
 			v, ok := env.Lookup(name)
 			if !ok {
@@ -51,10 +57,16 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 			}
 			stack = stack[:len(stack)-1]
 		case OpJump:
+			if ins.Arg < 0 || ins.Arg >= len(code.Instrs) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s target %d", ins.Op, ins.Arg)
+			}
 			pc = ins.Arg
 		case OpJumpIfFalse:
 			if len(stack) == 0 {
 				return nil, maxFrames, fmt.Errorf("gosp: vm: jump-if-false on empty stack")
+			}
+			if ins.Arg < 0 || ins.Arg >= len(code.Instrs) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s target %d", ins.Op, ins.Arg)
 			}
 			top := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
@@ -125,6 +137,9 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 			if len(stack) == 0 {
 				return nil, maxFrames, fmt.Errorf("gosp: vm: make-label: empty stack")
 			}
+			if ins.Arg < 0 || ins.Arg >= len(code.Syms) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s arg %d", ins.Op, ins.Arg)
+			}
 			top := stack[len(stack)-1]
 			closure, ok := top.(*value.Closure)
 			if !ok {
@@ -165,6 +180,9 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 		case OpDefineGlobal:
 			if len(stack) == 0 {
 				return nil, maxFrames, fmt.Errorf("gosp: vm: define-global: empty stack")
+			}
+			if ins.Arg < 0 || ins.Arg >= len(code.Syms) {
+				return nil, maxFrames, fmt.Errorf("gosp: vm: invalid %s arg %d", ins.Op, ins.Arg)
 			}
 			env.SetGlobal(code.Syms[ins.Arg], stack[len(stack)-1])
 		case OpRet:

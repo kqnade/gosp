@@ -96,3 +96,77 @@ func TestRunRetEmptyStack(t *testing.T) {
 		t.Fatal("expected error for RET on empty stack, got nil")
 	}
 }
+
+func TestRunMalformedBytecodeReturnsError(t *testing.T) {
+	cases := []struct {
+		name string
+		code *Code
+	}{
+		{
+			name: "OpLoadConst out of range",
+			code: &Code{Instrs: []Instr{{Op: OpLoadConst, Arg: 5}, {Op: OpRet}}},
+		},
+		{
+			name: "OpLoadConst negative",
+			code: &Code{Instrs: []Instr{{Op: OpLoadConst, Arg: -1}, {Op: OpRet}}},
+		},
+		{
+			name: "OpLoadVar out of range",
+			code: &Code{Instrs: []Instr{{Op: OpLoadVar, Arg: 0}, {Op: OpRet}}},
+		},
+		{
+			name: "OpJump negative",
+			code: &Code{Instrs: []Instr{{Op: OpJump, Arg: -1}, {Op: OpRet}}},
+		},
+		{
+			name: "OpJump past end",
+			code: &Code{Instrs: []Instr{{Op: OpJump, Arg: 99}, {Op: OpRet}}},
+		},
+		{
+			name: "OpJumpIfFalse out of range",
+			code: &Code{
+				Instrs: []Instr{
+					{Op: OpLoadConst, Arg: 0},
+					{Op: OpJumpIfFalse, Arg: 99},
+					{Op: OpRet},
+				},
+				Consts: []value.Value{value.NIL},
+			},
+		},
+		{
+			name: "OpMakeLabel sym out of range",
+			code: &Code{
+				Instrs: []Instr{
+					{Op: OpMakeClosure, Arg: 0},
+					{Op: OpMakeLabel, Arg: 5},
+					{Op: OpRet},
+				},
+				Funcs: []*FuncProto{{
+					Code: &Code{Instrs: []Instr{{Op: OpRet}}},
+				}},
+			},
+		},
+		{
+			name: "OpDefineGlobal sym out of range",
+			code: &Code{
+				Instrs: []Instr{
+					{Op: OpLoadConst, Arg: 0},
+					{Op: OpDefineGlobal, Arg: 5},
+					{Op: OpRet},
+				},
+				Consts: []value.Value{value.NIL},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Run(tc.code, value.NewEnv(nil))
+			if err == nil {
+				t.Fatal("expected error for malformed bytecode, got nil")
+			}
+			if !strings.Contains(err.Error(), "gosp: vm:") {
+				t.Errorf("err = %v, want gosp: vm: prefix", err)
+			}
+		})
+	}
+}
