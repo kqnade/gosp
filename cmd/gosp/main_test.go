@@ -84,3 +84,36 @@ func TestRunInteractiveSyntaxError(t *testing.T) {
 		t.Fatalf("output = %q, want to recover and produce %q", out.String(), "a\n")
 	}
 }
+
+func TestRunInteractiveSingleLineVM(t *testing.T) {
+	in := bytes.NewBufferString("(quote a)\n")
+	var out bytes.Buffer
+	if err := RunInteractiveVM(in, &out); err != nil {
+		t.Fatalf("RunInteractiveVM error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to contain %q", out.String(), "a\n")
+	}
+}
+
+func TestRunInteractiveMultiLineVM(t *testing.T) {
+	in := bytes.NewBufferString("(quote\n  a)\n")
+	var out bytes.Buffer
+	if err := RunInteractiveVM(in, &out); err != nil {
+		t.Fatalf("RunInteractiveVM error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to contain %q", out.String(), "a\n")
+	}
+}
+
+func TestRunInteractiveSyntaxErrorVM(t *testing.T) {
+	in := bytes.NewBufferString(")\n(quote a)\n")
+	var out bytes.Buffer
+	if err := RunInteractiveVM(in, &out); err != nil {
+		t.Fatalf("RunInteractiveVM error: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("a\n")) {
+		t.Fatalf("output = %q, want to recover and produce %q", out.String(), "a\n")
+	}
+}
