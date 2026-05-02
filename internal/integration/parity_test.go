@@ -121,7 +121,7 @@ func runVM(forms []value.Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	result, err := vm.Run(code, value.NewEnv(nil))
+	result, err := vm.Run(code, vm.NewGlobalEnv())
 	if err != nil {
 		return "", err
 	}

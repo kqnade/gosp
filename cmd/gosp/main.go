@@ -39,7 +39,7 @@ func runFile(path string, out io.Writer, useVM bool) error {
 		if err != nil {
 			return err
 		}
-		result, err = vm.Run(code, value.NewEnv(nil))
+		result, err = vm.Run(code, vm.NewGlobalEnv())
 		if err != nil {
 			return err
 		}
@@ -65,8 +65,15 @@ func RunInteractiveVM(in io.Reader, out io.Writer) error {
 }
 
 func runInteractive(in io.Reader, out io.Writer, useVM bool) error {
-	treeEnv := eval.NewGlobalEnv()
-	vmEnv := value.NewEnv(nil)
+	var (
+		treeEnv *value.Env
+		vmEnv   *value.Env
+	)
+	if useVM {
+		vmEnv = vm.NewGlobalEnv()
+	} else {
+		treeEnv = eval.NewGlobalEnv()
+	}
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	var buf strings.Builder
