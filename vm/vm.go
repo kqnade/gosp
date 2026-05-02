@@ -3,7 +3,7 @@ package vm
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 type frame struct {

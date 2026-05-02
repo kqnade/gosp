@@ -3,8 +3,8 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
-	"github.com/kqnade/gosp/internal/vm"
+	"github.com/kqnade/gosp/value"
+	"github.com/kqnade/gosp/vm"
 )
 
 func Compile(v value.Value) (*vm.Code, error) {

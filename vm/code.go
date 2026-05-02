@@ -1,6 +1,6 @@
 package vm
 
-import "github.com/kqnade/gosp/internal/value"
+import "github.com/kqnade/gosp/value"
 
 type Code struct {
 	Instrs []Instr

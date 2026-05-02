@@ -3,7 +3,7 @@ package eval
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func EvalProgram(forms []value.Value, env *value.Env) (value.Value, error) {

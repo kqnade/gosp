@@ -3,7 +3,7 @@ package printer
 import (
 	"strings"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func Print(v value.Value) string {

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kqnade/gosp/internal/compiler"
-	"github.com/kqnade/gosp/internal/eval"
-	"github.com/kqnade/gosp/internal/printer"
-	"github.com/kqnade/gosp/internal/reader"
-	"github.com/kqnade/gosp/internal/value"
-	"github.com/kqnade/gosp/internal/vm"
+	"github.com/kqnade/gosp/compiler"
+	"github.com/kqnade/gosp/eval"
+	"github.com/kqnade/gosp/printer"
+	"github.com/kqnade/gosp/reader"
+	"github.com/kqnade/gosp/value"
+	"github.com/kqnade/gosp/vm"
 )
 
 func TestParity(t *testing.T) {

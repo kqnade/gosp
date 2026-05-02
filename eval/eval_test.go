@@ -3,7 +3,7 @@ package eval
 import (
 	"testing"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func TestEvalT(t *testing.T) {

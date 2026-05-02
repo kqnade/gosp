@@ -3,7 +3,7 @@ package reader
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func Parse(tokens []Token) (value.Value, error) {

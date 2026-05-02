@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func TestRunLoadConst(t *testing.T) {
