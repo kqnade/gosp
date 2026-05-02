@@ -52,7 +52,7 @@ func Cons(a, b Value) *Pair {
 }
 
 func List(xs ...Value) Value {
-	var out Value = NIL
+	out := NIL
 	for i := len(xs) - 1; i >= 0; i-- {
 		out = Cons(xs[i], out)
 	}

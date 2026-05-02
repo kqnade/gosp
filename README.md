@@ -89,7 +89,7 @@ skipped under `-short`.
 
 ## Layout
 
-```
+```text
 gosp/
 ├── cmd/gosp/                # CLI: file runner and REPL, with -vm
 ├── internal/
