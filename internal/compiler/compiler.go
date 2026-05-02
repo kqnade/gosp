@@ -64,7 +64,7 @@ func (b *builder) compileTopLevelLabel(form value.Value) error {
 	if !value.IsNil(rest.Cdr) {
 		return fmt.Errorf("gosp: compile: label: too many arguments")
 	}
-	if err := b.compile(rest.Car, false); err != nil {
+	if err := b.compileLabelBody(rest.Car, name.Name); err != nil {
 		return err
 	}
 	b.emit(vm.OpDefineGlobal, b.addSym(name.Name))
@@ -73,6 +73,31 @@ func (b *builder) compileTopLevelLabel(form value.Value) error {
 
 type builder struct {
 	code *vm.Code
+	// locals tracks names that are lexically bound in the current
+	// compilation context (lambda parameters and label self-names).
+	// When a primitive name like car/cdr/cons/atom/eq appears in
+	// operator position and is shadowed by a local binding, the call
+	// must go through env lookup rather than be lowered to a fixed
+	// opcode. nil means top level (no local bindings).
+	locals map[string]bool
+}
+
+func (b *builder) isLocal(name string) bool {
+	if b.locals == nil {
+		return false
+	}
+	return b.locals[name]
+}
+
+func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+	out := make(map[string]bool, len(parent)+len(names))
+	for k, v := range parent {
+		out[k] = v
+	}
+	for _, n := range names {
+		out[n] = true
+	}
+	return out
 }
 
 func (b *builder) compile(v value.Value, tail bool) error {
@@ -104,20 +129,24 @@ func (b *builder) compilePair(p *value.Pair, tail bool) error {
 			return b.compileQuote(p.Cdr)
 		case "cond":
 			return b.compileCond(p.Cdr, tail)
-		case "car":
-			return b.compileUnary("car", vm.OpCar, p.Cdr)
-		case "cdr":
-			return b.compileUnary("cdr", vm.OpCdr, p.Cdr)
-		case "cons":
-			return b.compileBinary("cons", vm.OpCons, p.Cdr)
-		case "atom":
-			return b.compileUnary("atom", vm.OpAtom, p.Cdr)
-		case "eq":
-			return b.compileBinary("eq", vm.OpEq, p.Cdr)
 		case "lambda":
 			return b.compileLambda(p.Cdr)
 		case "label":
 			return b.compileLabel(p.Cdr)
+		}
+		if !b.isLocal(head.Name) {
+			switch head.Name {
+			case "car":
+				return b.compileUnary("car", vm.OpCar, p.Cdr)
+			case "cdr":
+				return b.compileUnary("cdr", vm.OpCdr, p.Cdr)
+			case "cons":
+				return b.compileBinary("cons", vm.OpCons, p.Cdr)
+			case "atom":
+				return b.compileUnary("atom", vm.OpAtom, p.Cdr)
+			case "eq":
+				return b.compileBinary("eq", vm.OpEq, p.Cdr)
+			}
 		}
 	}
 	return b.compileCall(p, tail)
@@ -139,15 +168,35 @@ func (b *builder) compileLabel(form value.Value) error {
 	if !value.IsNil(rest.Cdr) {
 		return fmt.Errorf("gosp: compile: label: too many arguments")
 	}
-	if err := b.compile(rest.Car, false); err != nil {
+	if err := b.compileLabelBody(rest.Car, name.Name); err != nil {
 		return err
 	}
 	b.emit(vm.OpMakeLabel, b.addSym(name.Name))
 	return nil
 }
 
+// compileLabelBody compiles the expression bound by `label`. When the
+// expression is a `lambda`, the label name is added to the lambda body's
+// lexical scope so recursive calls by name go through env lookup rather
+// than being lowered to a primitive opcode (e.g. for `(label car ...)`).
+func (b *builder) compileLabelBody(expr value.Value, selfName string) error {
+	if exprPair, ok := expr.(*value.Pair); ok {
+		if head, ok := exprPair.Car.(value.Symbol); ok && head.Name == "lambda" {
+			proto, err := buildFuncProto(exprPair.Cdr, extendLocals(b.locals, selfName))
+			if err != nil {
+				return err
+			}
+			idx := len(b.code.Funcs)
+			b.code.Funcs = append(b.code.Funcs, proto)
+			b.emit(vm.OpMakeClosure, idx)
+			return nil
+		}
+	}
+	return b.compile(expr, false)
+}
+
 func (b *builder) compileLambda(form value.Value) error {
-	proto, err := buildFuncProto(form)
+	proto, err := buildFuncProto(form, b.locals)
 	if err != nil {
 		return err
 	}
@@ -157,7 +206,7 @@ func (b *builder) compileLambda(form value.Value) error {
 	return nil
 }
 
-func buildFuncProto(form value.Value) (*vm.FuncProto, error) {
+func buildFuncProto(form value.Value, parentLocals map[string]bool) (*vm.FuncProto, error) {
 	pair, ok := form.(*value.Pair)
 	if !ok {
 		return nil, fmt.Errorf("gosp: compile: lambda: missing parameter list")
@@ -173,7 +222,11 @@ func buildFuncProto(form value.Value) (*vm.FuncProto, error) {
 	if err != nil {
 		return nil, err
 	}
-	bb := &builder{code: &vm.Code{}}
+	names := make([]string, len(params))
+	for i, p := range params {
+		names[i] = p.Name
+	}
+	bb := &builder{code: &vm.Code{}, locals: extendLocals(parentLocals, names...)}
 	if err := bb.compile(body.Car, true); err != nil {
 		return nil, err
 	}

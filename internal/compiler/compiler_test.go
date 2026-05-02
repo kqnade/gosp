@@ -852,6 +852,187 @@ func TestRunCarOfAtomFails(t *testing.T) {
 	}
 }
 
+func TestLocalShadowingPrimitives(t *testing.T) {
+	q := value.Symbol{Name: "quote"}
+	lambda := value.Symbol{Name: "lambda"}
+	cond := value.Symbol{Name: "cond"}
+	tSym := value.Symbol{Name: "t"}
+	a := value.Symbol{Name: "a"}
+	b := value.Symbol{Name: "b"}
+	x := value.Symbol{Name: "x"}
+	y := value.Symbol{Name: "y"}
+	z := value.Symbol{Name: "z"}
+
+	t.Run("lambda parameter shadows car", func(t *testing.T) {
+		// ((lambda (car) (car 'x))
+		//  (lambda (z) (cons z '())))
+		car := value.Symbol{Name: "car"}
+		inner := value.List(
+			lambda, value.List(z),
+			value.List(value.Symbol{Name: "cons"}, z, value.List(q, value.NIL)),
+		)
+		outer := value.List(
+			lambda, value.List(car),
+			value.List(car, value.List(q, x)),
+		)
+		form := value.List(outer, inner)
+
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		// The shadowed call must NOT lower to OpCar; the body must use
+		// CALL or TAIL_CALL via env lookup.
+		if len(code.Funcs) < 1 {
+			t.Fatalf("expected at least one FuncProto")
+		}
+		outerBody := code.Funcs[0].Code.Instrs
+		if countOp(outerBody, vm.OpCar) != 0 {
+			t.Errorf("shadowed (car ...) must not lower to OpCar; got body %v", outerBody)
+		}
+		if countOp(outerBody, vm.OpCall)+countOp(outerBody, vm.OpTailCall) != 1 {
+			t.Errorf("shadowed (car ...) must compile to CALL/TAIL_CALL; got %v", outerBody)
+		}
+
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		want := value.List(x)
+		if !valueEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("lambda parameter shadows each primitive", func(t *testing.T) {
+		// For each primitive name P, build:
+		//   ((lambda (P) (P 'a [arg2])) (lambda (...) BODY))
+		// where BODY produces a witness symbol (`shadow`), and assert
+		// the witness flows out instead of the primitive being applied.
+		shadow := value.Symbol{Name: "shadow"}
+		quoteShadow := value.List(q, shadow)
+		cases := []struct {
+			name   string
+			prim   string
+			arity  int
+			callee value.Value // (lambda (...) shadow)
+		}{
+			{"shadow car", "car", 1, value.List(lambda, value.List(x), quoteShadow)},
+			{"shadow cdr", "cdr", 1, value.List(lambda, value.List(x), quoteShadow)},
+			{"shadow atom", "atom", 1, value.List(lambda, value.List(x), quoteShadow)},
+			{"shadow cons", "cons", 2, value.List(lambda, value.List(x, y), quoteShadow)},
+			{"shadow eq", "eq", 2, value.List(lambda, value.List(x, y), quoteShadow)},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				p := value.Symbol{Name: tc.prim}
+				var call value.Value
+				if tc.arity == 1 {
+					call = value.List(p, value.List(q, a))
+				} else {
+					call = value.List(p, value.List(q, a), value.List(q, b))
+				}
+				outer := value.List(lambda, value.List(p), call)
+				form := value.List(outer, tc.callee)
+
+				code, err := Compile(form)
+				if err != nil {
+					t.Fatalf("Compile: %v", err)
+				}
+				got, err := vm.Run(code, value.NewEnv(nil))
+				if err != nil {
+					t.Fatalf("Run: %v", err)
+				}
+				if !value.Eq(got, shadow) {
+					t.Errorf("%s: got %v, want shadow", tc.prim, got)
+				}
+			})
+		}
+	})
+
+	t.Run("label name shadows primitive", func(t *testing.T) {
+		// (label car (lambda (n) (cond ((eq n '()) 'done) (t (car (cdr n))))))
+		// applied to (a) should recurse via the labeled `car` and reach 'done.
+		// The body's `(car (cdr n))` must NOT lower to OpCar.
+		car := value.Symbol{Name: "car"}
+		n := value.Symbol{Name: "n"}
+		cdr := value.Symbol{Name: "cdr"}
+		eq := value.Symbol{Name: "eq"}
+		done := value.Symbol{Name: "done"}
+		body := value.List(
+			cond,
+			value.List(value.List(eq, n, value.List(q, value.NIL)), value.List(q, done)),
+			value.List(tSym, value.List(car, value.List(cdr, n))),
+		)
+		labFn := value.List(value.Symbol{Name: "label"}, car, value.List(lambda, value.List(n), body))
+		form := value.List(labFn, value.List(q, value.List(a)))
+
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		// FuncProto[0] is the lambda body. The shadowed (car (cdr n))
+		// must not lower to OpCar. (cdr n) is the only OpCdr.
+		if len(code.Funcs) < 1 {
+			t.Fatalf("expected at least one FuncProto")
+		}
+		bodyInstrs := code.Funcs[0].Code.Instrs
+		if countOp(bodyInstrs, vm.OpCar) != 0 {
+			t.Errorf("label-shadowed (car ...) must not lower to OpCar; got %v", bodyInstrs)
+		}
+
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !value.Eq(got, done) {
+			t.Errorf("got %v, want done", got)
+		}
+	})
+
+	t.Run("outer lambda binding shadows primitive in inner lambda body", func(t *testing.T) {
+		// ((lambda (car)
+		//    ((lambda (x) (car x)) (quote a)))
+		//  (lambda (z) (cons z '())))
+		// Inner `(car x)` is shadowed by the outer parameter `car`.
+		car := value.Symbol{Name: "car"}
+		inner := value.List(
+			lambda, value.List(z),
+			value.List(value.Symbol{Name: "cons"}, z, value.List(q, value.NIL)),
+		)
+		nested := value.List(
+			lambda, value.List(car),
+			value.List(
+				value.List(lambda, value.List(x), value.List(car, x)),
+				value.List(q, a),
+			),
+		)
+		form := value.List(nested, inner)
+
+		code, err := Compile(form)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		// Inner lambda is the second FuncProto registered in the outer
+		// lambda's body (callee is the first).
+		// Check that none of the FuncProtos use OpCar.
+		for i, fp := range code.Funcs {
+			if countOp(fp.Code.Instrs, vm.OpCar) != 0 {
+				t.Errorf("FuncProto[%d] must not use OpCar (shadowed): %v", i, fp.Code.Instrs)
+			}
+		}
+
+		got, err := vm.Run(code, value.NewEnv(nil))
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		want := value.List(a)
+		if !valueEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+}
+
 // valueEqual compares two values for structural equality (symbols + nested pairs).
 func valueEqual(a, b value.Value) bool {
 	if value.IsAtom(a) || value.IsAtom(b) {
