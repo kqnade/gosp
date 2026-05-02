@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kqnade/gosp/eval"
-	"github.com/kqnade/gosp/printer"
-	"github.com/kqnade/gosp/reader"
+	"github.com/kqnade/gosp/internal/eval"
+	"github.com/kqnade/gosp/internal/printer"
+	"github.com/kqnade/gosp/internal/reader"
 )
 
 func TestCorpus(t *testing.T) {

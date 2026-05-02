@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kqnade/gosp/value"
-	"github.com/kqnade/gosp/vm"
+	"github.com/kqnade/gosp/internal/vm"
 )
 
 func Compile(v value.Value) (*vm.Code, error) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/kqnade/gosp/value"
-	"github.com/kqnade/gosp/vm"
+	"github.com/kqnade/gosp/internal/vm"
 )
 
 func TestCompileT(t *testing.T) {

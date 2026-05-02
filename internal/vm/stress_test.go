@@ -3,9 +3,9 @@ package vm_test
 import (
 	"testing"
 
-	"github.com/kqnade/gosp/compiler"
+	"github.com/kqnade/gosp/internal/compiler"
 	"github.com/kqnade/gosp/value"
-	"github.com/kqnade/gosp/vm"
+	"github.com/kqnade/gosp/internal/vm"
 )
 
 // TestVMTailCallStress drives a 100,000-iteration tail-recursive drop
