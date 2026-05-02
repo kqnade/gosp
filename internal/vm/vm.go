@@ -150,33 +150,57 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 			bound.Self = &name
 			stack[len(stack)-1] = &bound
 		case OpCall:
-			closure, args, err := popCall(&stack, ins.Arg)
+			callee, args, err := popCallable(&stack, ins.Arg)
 			if err != nil {
 				return nil, maxFrames, err
 			}
-			body, newEnv, err := enterClosure(closure, args)
-			if err != nil {
-				return nil, maxFrames, err
+			switch fn := callee.(type) {
+			case *value.Closure:
+				body, newEnv, err := enterClosureChecked(fn, args)
+				if err != nil {
+					return nil, maxFrames, err
+				}
+				frames = append(frames, frame{code: code, pc: pc, env: env})
+				if len(frames) > maxFrames {
+					maxFrames = len(frames)
+				}
+				code = body
+				pc = 0
+				env = newEnv
+			case value.Builtin:
+				result, err := fn.Fn(args)
+				if err != nil {
+					return nil, maxFrames, err
+				}
+				stack = append(stack, result)
+			default:
+				return nil, maxFrames, fmt.Errorf("gosp: vm: call: not a function: %T", callee)
 			}
-			frames = append(frames, frame{code: code, pc: pc, env: env})
-			if len(frames) > maxFrames {
-				maxFrames = len(frames)
-			}
-			code = body
-			pc = 0
-			env = newEnv
 		case OpTailCall:
-			closure, args, err := popCall(&stack, ins.Arg)
+			callee, args, err := popCallable(&stack, ins.Arg)
 			if err != nil {
 				return nil, maxFrames, err
 			}
-			body, newEnv, err := enterClosure(closure, args)
-			if err != nil {
-				return nil, maxFrames, err
+			switch fn := callee.(type) {
+			case *value.Closure:
+				body, newEnv, err := enterClosureChecked(fn, args)
+				if err != nil {
+					return nil, maxFrames, err
+				}
+				code = body
+				pc = 0
+				env = newEnv
+			case value.Builtin:
+				// A Builtin has no VM frame to replace; fall through to
+				// the surrounding RET, which returns the pushed result.
+				result, err := fn.Fn(args)
+				if err != nil {
+					return nil, maxFrames, err
+				}
+				stack = append(stack, result)
+			default:
+				return nil, maxFrames, fmt.Errorf("gosp: vm: call: not a function: %T", callee)
 			}
-			code = body
-			pc = 0
-			env = newEnv
 		case OpDefineGlobal:
 			if len(stack) == 0 {
 				return nil, maxFrames, fmt.Errorf("gosp: vm: define-global: empty stack")
@@ -203,7 +227,9 @@ func runWithStats(code *Code, env *value.Env) (value.Value, int, error) {
 	}
 }
 
-func popCall(stack *[]value.Value, n int) (*value.Closure, []value.Value, error) {
+// popCallable pops `n` arguments and the callee from the stack. The
+// callee may be any value; the caller dispatches on its concrete type.
+func popCallable(stack *[]value.Value, n int) (value.Value, []value.Value, error) {
 	s := *stack
 	if len(s) < n+1 {
 		return nil, nil, fmt.Errorf("gosp: vm: call: stack underflow")
@@ -212,14 +238,17 @@ func popCall(stack *[]value.Value, n int) (*value.Closure, []value.Value, error)
 	args := append([]value.Value(nil), s[argsBase:]...)
 	callee := s[argsBase-1]
 	*stack = s[:argsBase-1]
-	closure, ok := callee.(*value.Closure)
-	if !ok {
-		return nil, nil, fmt.Errorf("gosp: vm: call: not a function: %T", callee)
-	}
-	if len(closure.Params) != n {
+	return callee, args, nil
+}
+
+// enterClosureChecked verifies arity and prepares a new VM frame for the
+// closure call. Use this from OpCall/OpTailCall after type-asserting to
+// *value.Closure.
+func enterClosureChecked(c *value.Closure, args []value.Value) (*Code, *value.Env, error) {
+	if len(c.Params) != len(args) {
 		return nil, nil, fmt.Errorf("gosp: vm: call: wrong number of arguments")
 	}
-	return closure, args, nil
+	return enterClosure(c, args)
 }
 
 func enterClosure(c *value.Closure, args []value.Value) (*Code, *value.Env, error) {

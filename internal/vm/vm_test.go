@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -94,6 +95,92 @@ func TestRunRetEmptyStack(t *testing.T) {
 	_, err := Run(code, value.NewEnv(nil))
 	if err == nil {
 		t.Fatal("expected error for RET on empty stack, got nil")
+	}
+}
+
+func TestRunCallBuiltin(t *testing.T) {
+	// Use a Builtin (the tree-walker representation) directly from the
+	// VM to ensure cross-evaluator interop. Program:
+	//   LOAD_VAR "id"; LOAD_CONST 'a; CALL 1; RET
+	id := value.Builtin{
+		Name: "id",
+		Fn: func(args []value.Value) (value.Value, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("id: arity")
+			}
+			return args[0], nil
+		},
+	}
+	env := value.NewEnv(nil)
+	env.Define("id", id)
+	code := &Code{
+		Instrs: []Instr{
+			{Op: OpLoadVar, Arg: 0},
+			{Op: OpLoadConst, Arg: 0},
+			{Op: OpCall, Arg: 1},
+			{Op: OpRet},
+		},
+		Consts: []value.Value{value.Symbol{Name: "a"}},
+		Syms:   []string{"id"},
+	}
+	got, err := Run(code, env)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !value.Eq(got, value.Symbol{Name: "a"}) {
+		t.Errorf("got %v, want a", got)
+	}
+}
+
+func TestRunTailCallBuiltinReturnsValue(t *testing.T) {
+	// Tail-call to a Builtin should fall through to the surrounding RET
+	// and return the Builtin's result.
+	id := value.Builtin{
+		Name: "id",
+		Fn: func(args []value.Value) (value.Value, error) {
+			return args[0], nil
+		},
+	}
+	env := value.NewEnv(nil)
+	env.Define("id", id)
+	code := &Code{
+		Instrs: []Instr{
+			{Op: OpLoadVar, Arg: 0},
+			{Op: OpLoadConst, Arg: 0},
+			{Op: OpTailCall, Arg: 1},
+			{Op: OpRet},
+		},
+		Consts: []value.Value{value.Symbol{Name: "z"}},
+		Syms:   []string{"id"},
+	}
+	got, err := Run(code, env)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !value.Eq(got, value.Symbol{Name: "z"}) {
+		t.Errorf("got %v, want z", got)
+	}
+}
+
+func TestRunCallBuiltinPropagatesError(t *testing.T) {
+	bad := value.Builtin{
+		Name: "bad",
+		Fn: func(args []value.Value) (value.Value, error) {
+			return nil, fmt.Errorf("bad: boom")
+		},
+	}
+	env := value.NewEnv(nil)
+	env.Define("bad", bad)
+	code := &Code{
+		Instrs: []Instr{
+			{Op: OpLoadVar, Arg: 0},
+			{Op: OpCall, Arg: 0},
+			{Op: OpRet},
+		},
+		Syms: []string{"bad"},
+	}
+	if _, err := Run(code, env); err == nil {
+		t.Fatal("expected Builtin error to surface, got nil")
 	}
 }
 
