@@ -36,10 +36,11 @@ func runFile(path string, out io.Writer, useVM bool) error {
 }
 
 func newRuntime(useVM bool) *gosp.Runtime {
+	backend := gosp.BackendEval
 	if useVM {
-		return gosp.New(gosp.WithBackend(gosp.BackendVM))
+		backend = gosp.BackendVM
 	}
-	return gosp.New()
+	return gosp.New(gosp.WithBackend(backend))
 }
 
 func main() {

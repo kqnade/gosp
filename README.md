@@ -66,6 +66,7 @@ package main
 
 import (
     "fmt"
+    "log"
 
     "github.com/kqnade/gosp"
     "github.com/kqnade/gosp/value"
@@ -82,7 +83,10 @@ func main() {
         return value.Cons(value.Symbol{Name: "hello"}, value.Cons(args[0], value.NIL)), nil
     })
 
-    v, _ := rt.Eval("(greet 'world)")
+    v, err := rt.Eval("(greet 'world)")
+    if err != nil {
+        log.Fatal(err)
+    }
     fmt.Println(gosp.Print(v)) // (hello world)
 }
 ```

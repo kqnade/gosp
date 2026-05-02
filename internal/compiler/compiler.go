@@ -127,7 +127,12 @@ func (b *builder) isRebound(name string) bool {
 	return b.rebound[name]
 }
 
-func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+// extendBoolSet returns a new set containing every key from parent
+// plus the given names. The parent is not modified, so callers can
+// safely keep a snapshot reference (used by lambda bodies that inherit
+// the locals/rebound state of their enclosing builder without seeing
+// later mutations).
+func extendBoolSet(parent map[string]bool, names ...string) map[string]bool {
 	out := make(map[string]bool, len(parent)+len(names))
 	for k, v := range parent {
 		out[k] = v
@@ -138,15 +143,12 @@ func extendLocals(parent map[string]bool, names ...string) map[string]bool {
 	return out
 }
 
+func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+	return extendBoolSet(parent, names...)
+}
+
 func extendRebound(parent map[string]bool, names ...string) map[string]bool {
-	out := make(map[string]bool, len(parent)+len(names))
-	for k, v := range parent {
-		out[k] = v
-	}
-	for _, n := range names {
-		out[n] = true
-	}
-	return out
+	return extendBoolSet(parent, names...)
 }
 
 func (b *builder) compile(v value.Value, tail bool) error {

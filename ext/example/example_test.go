@@ -39,18 +39,29 @@ func TestExampleRegister(t *testing.T) {
 	}
 }
 
-func TestExampleArityError(t *testing.T) {
-	rt := gosp.New()
-	example.Register(rt)
-	if _, err := rt.Eval("(second '(a) '(b))"); err == nil {
-		t.Fatalf("expected arity error, got nil")
+func TestExampleErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"arity", "(second '(a) '(b))"},
+		{"short list", "(third '(a b))"},
 	}
-}
-
-func TestExampleShortList(t *testing.T) {
-	rt := gosp.New()
-	example.Register(rt)
-	if _, err := rt.Eval("(third '(a b))"); err == nil {
-		t.Fatalf("expected short-list error, got nil")
+	for _, backend := range []struct {
+		name    string
+		backend gosp.Backend
+	}{
+		{"eval", gosp.BackendEval},
+		{"vm", gosp.BackendVM},
+	} {
+		for _, c := range cases {
+			t.Run(backend.name+"/"+c.name, func(t *testing.T) {
+				rt := gosp.New(gosp.WithBackend(backend.backend))
+				example.Register(rt)
+				if _, err := rt.Eval(c.src); err == nil {
+					t.Fatalf("Eval(%q): expected error, got nil", c.src)
+				}
+			})
+		}
 	}
 }

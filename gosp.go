@@ -194,16 +194,19 @@ func (r *Runtime) RunFile(path string) (Value, error) {
 }
 
 // REPL runs an interactive read-eval-print loop on in/out until EOF.
-// Each result is printed with Print.
+// Each result is printed with Print. Returns scanner.Err() on input
+// failure, or any error from writing to out (e.g. broken pipe).
 func (r *Runtime) REPL(in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	var buf strings.Builder
 	for {
-		if buf.Len() == 0 {
-			fmt.Fprint(out, "> ")
-		} else {
-			fmt.Fprint(out, "  ")
+		prompt := "> "
+		if buf.Len() != 0 {
+			prompt = "  "
+		}
+		if _, err := fmt.Fprint(out, prompt); err != nil {
+			return fmt.Errorf("gosp: repl: write prompt: %w", err)
 		}
 		if !scanner.Scan() {
 			break
@@ -217,16 +220,22 @@ func (r *Runtime) REPL(in io.Reader, out io.Writer) error {
 		buf.Reset()
 		forms, err := reader.ReadAll(src)
 		if err != nil {
-			fmt.Fprintln(out, err)
+			if _, werr := fmt.Fprintln(out, err); werr != nil {
+				return fmt.Errorf("gosp: repl: write read error: %w", werr)
+			}
 			continue
 		}
 		for _, form := range forms {
 			v, err := r.EvalForm(form)
 			if err != nil {
-				fmt.Fprintln(out, err)
+				if _, werr := fmt.Fprintln(out, err); werr != nil {
+					return fmt.Errorf("gosp: repl: write eval error: %w", werr)
+				}
 				break
 			}
-			fmt.Fprintln(out, Print(v))
+			if _, err := fmt.Fprintln(out, Print(v)); err != nil {
+				return fmt.Errorf("gosp: repl: write result: %w", err)
+			}
 		}
 	}
 	return scanner.Err()
