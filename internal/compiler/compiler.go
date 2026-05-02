@@ -7,8 +7,25 @@ import (
 	"github.com/kqnade/gosp/internal/vm"
 )
 
-func Compile(v value.Value) (*vm.Code, error) {
+// Option configures CompileProgram / Compile.
+type Option func(*builder)
+
+// WithRebound marks names as already redefined in the runtime's global
+// environment. Primitive names listed here are dispatched through env
+// lookup instead of being lowered to fixed opcodes, so a host
+// registration or a top-level label from an earlier compile pass
+// continues to shadow the primitive.
+func WithRebound(names ...string) Option {
+	return func(b *builder) {
+		b.rebound = extendRebound(b.rebound, names...)
+	}
+}
+
+func Compile(v value.Value, opts ...Option) (*vm.Code, error) {
 	c := &builder{code: &vm.Code{}}
+	for _, opt := range opts {
+		opt(c)
+	}
 	if err := c.compile(v, false); err != nil {
 		return nil, err
 	}
@@ -20,8 +37,11 @@ func Compile(v value.Value) (*vm.Code, error) {
 // (label NAME EXPR) at top level mutates the global environment via
 // OpDefineGlobal; in-expression label still produces a self-bound
 // closure. The program returns the value of the last form.
-func CompileProgram(forms []value.Value) (*vm.Code, error) {
+func CompileProgram(forms []value.Value, opts ...Option) (*vm.Code, error) {
 	c := &builder{code: &vm.Code{}}
+	for _, opt := range opts {
+		opt(c)
+	}
 	if len(forms) == 0 {
 		c.emit(vm.OpLoadConst, c.addConst(value.NIL))
 		c.emit(vm.OpRet, 0)

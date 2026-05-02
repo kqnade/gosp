@@ -50,6 +50,18 @@ func WithBackend(b Backend) Option {
 	return func(r *Runtime) { r.backend = b }
 }
 
+// primitiveNames is the set of McCarthy primitives the VM compiler can
+// lower to fixed opcodes. Names in this set need extra bookkeeping when
+// they are shadowed at the runtime level so the VM compiler routes
+// calls through env lookup instead.
+var primitiveNames = map[string]bool{
+	"car":  true,
+	"cdr":  true,
+	"cons": true,
+	"atom": true,
+	"eq":   true,
+}
+
 // Runtime owns a persistent global environment and an execution
 // backend. Use New to construct one.
 //
@@ -59,6 +71,13 @@ func WithBackend(b Backend) Option {
 type Runtime struct {
 	backend Backend
 	env     *value.Env
+	// reboundPrimitives tracks primitive names that have been redefined
+	// in this Runtime's lifetime, either via Register or via a top-level
+	// (label NAME ...). The VM compiler must not lower calls to these
+	// names to fixed opcodes — they have to go through env lookup so the
+	// override wins. This set is only consulted by the VM backend; the
+	// tree-walking evaluator already routes every call through env.
+	reboundPrimitives map[string]bool
 }
 
 // New creates a Runtime with the McCarthy primitives pre-bound.
@@ -84,6 +103,45 @@ func New(opts ...Option) *Runtime {
 // reset the environment.
 func (r *Runtime) Register(name string, fn BuiltinFunc) {
 	r.env.Define(name, value.Builtin{Name: name, Fn: fn})
+	if primitiveNames[name] {
+		r.markReboundPrimitive(name)
+	}
+}
+
+func (r *Runtime) markReboundPrimitive(name string) {
+	if r.reboundPrimitives == nil {
+		r.reboundPrimitives = make(map[string]bool)
+	}
+	r.reboundPrimitives[name] = true
+}
+
+// recordTopLevelLabels scans forms for top-level (label NAME EXPR)
+// shapes and marks any primitive NAME so the next VM compile pass
+// (and any later one) routes through env lookup. Called before
+// compilation so the compile pass that contains the label sees the
+// override and any subsequent Eval call inherits it.
+func (r *Runtime) recordTopLevelLabels(forms []Value) {
+	for _, form := range forms {
+		pair, ok := form.(*value.Pair)
+		if !ok {
+			continue
+		}
+		head, ok := pair.Car.(value.Symbol)
+		if !ok || head.Name != "label" {
+			continue
+		}
+		rest, ok := pair.Cdr.(*value.Pair)
+		if !ok {
+			continue
+		}
+		name, ok := rest.Car.(value.Symbol)
+		if !ok {
+			continue
+		}
+		if primitiveNames[name.Name] {
+			r.markReboundPrimitive(name.Name)
+		}
+	}
 }
 
 // Eval parses src and evaluates each form in order, returning the value
@@ -107,7 +165,16 @@ func (r *Runtime) EvalForm(form Value) (Value, error) {
 func (r *Runtime) evalForms(forms []Value) (Value, error) {
 	switch r.backend {
 	case BackendVM:
-		code, err := compiler.CompileProgram(forms)
+		r.recordTopLevelLabels(forms)
+		var opts []compiler.Option
+		if len(r.reboundPrimitives) > 0 {
+			names := make([]string, 0, len(r.reboundPrimitives))
+			for n := range r.reboundPrimitives {
+				names = append(names, n)
+			}
+			opts = append(opts, compiler.WithRebound(names...))
+		}
+		code, err := compiler.CompileProgram(forms, opts...)
 		if err != nil {
 			return nil, err
 		}
