@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func TestNewGlobalEnvDefinesPrimitives(t *testing.T) {

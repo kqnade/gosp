@@ -10,7 +10,7 @@ import (
 	"github.com/kqnade/gosp/internal/eval"
 	"github.com/kqnade/gosp/internal/printer"
 	"github.com/kqnade/gosp/internal/reader"
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 	"github.com/kqnade/gosp/internal/vm"
 )
 

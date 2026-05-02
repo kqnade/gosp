@@ -1,6 +1,6 @@
 package vm
 
-import "github.com/kqnade/gosp/internal/value"
+import "github.com/kqnade/gosp/value"
 
 // NewGlobalEnv returns a VM environment seeded with closures for the
 // McCarthy primitives. Each primitive is a tiny VM-callable closure

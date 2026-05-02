@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/kqnade/gosp/internal/compiler"
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 	"github.com/kqnade/gosp/internal/vm"
 )
 

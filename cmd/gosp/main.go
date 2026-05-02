@@ -1,19 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
-	"github.com/kqnade/gosp/internal/compiler"
-	"github.com/kqnade/gosp/internal/eval"
-	"github.com/kqnade/gosp/internal/printer"
-	"github.com/kqnade/gosp/internal/reader"
-	"github.com/kqnade/gosp/internal/value"
-	"github.com/kqnade/gosp/internal/vm"
+	"github.com/kqnade/gosp"
 )
 
 func Run(path string, out io.Writer) error {
@@ -24,122 +17,30 @@ func RunVM(path string, out io.Writer) error {
 	return runFile(path, out, true)
 }
 
-func runFile(path string, out io.Writer, useVM bool) error {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("gosp: %w", err)
-	}
-	forms, err := reader.ReadAll(string(src))
-	if err != nil {
-		return err
-	}
-	var result value.Value
-	if useVM {
-		code, err := compiler.CompileProgram(forms)
-		if err != nil {
-			return err
-		}
-		result, err = vm.Run(code, vm.NewGlobalEnv())
-		if err != nil {
-			return err
-		}
-	} else {
-		env := eval.NewGlobalEnv()
-		result, err = eval.EvalProgram(forms, env)
-		if err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintln(out, printer.Print(result)); err != nil {
-		return err
-	}
-	return nil
-}
-
 func RunInteractive(in io.Reader, out io.Writer) error {
-	return runInteractive(in, out, false)
+	return newRuntime(false).REPL(in, out)
 }
 
 func RunInteractiveVM(in io.Reader, out io.Writer) error {
-	return runInteractive(in, out, true)
+	return newRuntime(true).REPL(in, out)
 }
 
-func runInteractive(in io.Reader, out io.Writer, useVM bool) error {
-	var (
-		treeEnv *value.Env
-		vmEnv   *value.Env
-	)
+func runFile(path string, out io.Writer, useVM bool) error {
+	rt := newRuntime(useVM)
+	v, err := rt.RunFile(path)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, gosp.Print(v))
+	return err
+}
+
+func newRuntime(useVM bool) *gosp.Runtime {
+	backend := gosp.BackendEval
 	if useVM {
-		vmEnv = vm.NewGlobalEnv()
-	} else {
-		treeEnv = eval.NewGlobalEnv()
+		backend = gosp.BackendVM
 	}
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	var buf strings.Builder
-	for {
-		if buf.Len() == 0 {
-			fmt.Fprint(out, "> ")
-		} else {
-			fmt.Fprint(out, "  ")
-		}
-		if !scanner.Scan() {
-			break
-		}
-		buf.WriteString(scanner.Text())
-		buf.WriteByte('\n')
-		if !parensBalanced(buf.String()) {
-			continue
-		}
-		src := buf.String()
-		buf.Reset()
-		forms, err := reader.ReadAll(src)
-		if err != nil {
-			fmt.Fprintln(out, err)
-			continue
-		}
-		for _, form := range forms {
-			var v value.Value
-			var err error
-			if useVM {
-				var code *vm.Code
-				code, err = compiler.CompileProgram([]value.Value{form})
-				if err == nil {
-					v, err = vm.Run(code, vmEnv)
-				}
-			} else {
-				v, err = eval.EvalProgram([]value.Value{form}, treeEnv)
-			}
-			if err != nil {
-				fmt.Fprintln(out, err)
-				break
-			}
-			fmt.Fprintln(out, printer.Print(v))
-		}
-	}
-	return scanner.Err()
-}
-
-func parensBalanced(src string) bool {
-	depth := 0
-	inComment := false
-	for _, r := range src {
-		if inComment {
-			if r == '\n' {
-				inComment = false
-			}
-			continue
-		}
-		switch r {
-		case ';':
-			inComment = true
-		case '(':
-			depth++
-		case ')':
-			depth--
-		}
-	}
-	return depth <= 0
+	return gosp.New(gosp.WithBackend(backend))
 }
 
 func main() {

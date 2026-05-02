@@ -3,12 +3,29 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 	"github.com/kqnade/gosp/internal/vm"
 )
 
-func Compile(v value.Value) (*vm.Code, error) {
+// Option configures CompileProgram / Compile.
+type Option func(*builder)
+
+// WithRebound marks names as already redefined in the runtime's global
+// environment. Primitive names listed here are dispatched through env
+// lookup instead of being lowered to fixed opcodes, so a host
+// registration or a top-level label from an earlier compile pass
+// continues to shadow the primitive.
+func WithRebound(names ...string) Option {
+	return func(b *builder) {
+		b.rebound = extendRebound(b.rebound, names...)
+	}
+}
+
+func Compile(v value.Value, opts ...Option) (*vm.Code, error) {
 	c := &builder{code: &vm.Code{}}
+	for _, opt := range opts {
+		opt(c)
+	}
 	if err := c.compile(v, false); err != nil {
 		return nil, err
 	}
@@ -20,8 +37,11 @@ func Compile(v value.Value) (*vm.Code, error) {
 // (label NAME EXPR) at top level mutates the global environment via
 // OpDefineGlobal; in-expression label still produces a self-bound
 // closure. The program returns the value of the last form.
-func CompileProgram(forms []value.Value) (*vm.Code, error) {
+func CompileProgram(forms []value.Value, opts ...Option) (*vm.Code, error) {
 	c := &builder{code: &vm.Code{}}
+	for _, opt := range opts {
+		opt(c)
+	}
 	if len(forms) == 0 {
 		c.emit(vm.OpLoadConst, c.addConst(value.NIL))
 		c.emit(vm.OpRet, 0)
@@ -107,7 +127,12 @@ func (b *builder) isRebound(name string) bool {
 	return b.rebound[name]
 }
 
-func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+// extendBoolSet returns a new set containing every key from parent
+// plus the given names. The parent is not modified, so callers can
+// safely keep a snapshot reference (used by lambda bodies that inherit
+// the locals/rebound state of their enclosing builder without seeing
+// later mutations).
+func extendBoolSet(parent map[string]bool, names ...string) map[string]bool {
 	out := make(map[string]bool, len(parent)+len(names))
 	for k, v := range parent {
 		out[k] = v
@@ -118,15 +143,12 @@ func extendLocals(parent map[string]bool, names ...string) map[string]bool {
 	return out
 }
 
+func extendLocals(parent map[string]bool, names ...string) map[string]bool {
+	return extendBoolSet(parent, names...)
+}
+
 func extendRebound(parent map[string]bool, names ...string) map[string]bool {
-	out := make(map[string]bool, len(parent)+len(names))
-	for k, v := range parent {
-		out[k] = v
-	}
-	for _, n := range names {
-		out[n] = true
-	}
-	return out
+	return extendBoolSet(parent, names...)
 }
 
 func (b *builder) compile(v value.Value, tail bool) error {

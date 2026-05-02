@@ -3,7 +3,7 @@ package eval
 import (
 	"fmt"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func NewGlobalEnv() *value.Env {

@@ -3,7 +3,7 @@ package reader
 import (
 	"testing"
 
-	"github.com/kqnade/gosp/internal/value"
+	"github.com/kqnade/gosp/value"
 )
 
 func TestReadAllReadsMultipleForms(t *testing.T) {
